@@ -1,0 +1,7 @@
+{
+  "name": "Lily Project",
+  "description": "A real-time, voice-interactive AI companion with a deep, evolving personality. Engage in natural, meaningful conversations with Lily, your virtual confidante.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
