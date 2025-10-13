@@ -4,8 +4,18 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Lily - AI Companion</title>
+
+    <!-- PWA & Mobile Enhancements -->
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#8b5cf6" />
+    <link rel="icon" href="/assets/lily-icon.svg" type="image/svg+xml">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Lily">
+    <link rel="apple-touch-icon" href="/assets/icon-192.png">
+    
     <script src="https://cdn.tailwindcss.com"></script>
-  <script type="importmap">
+    <script type="importmap">
 {
   "imports": {
     "react": "https://aistudiocdn.com/react@^19.2.0",
@@ -18,7 +28,6 @@
   }
 }
 </script>
-<!-- 3D Model Viewer Script Removed -->
 <style>
   @keyframes glow {
     0%, 100% {
@@ -36,5 +45,16 @@
   <body class="bg-gray-900">
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').then(registration => {
+            console.log('ServiceWorker registrado con éxito:', registration.scope);
+          }).catch(error => {
+            console.log('Fallo en el registro del ServiceWorker:', error);
+          });
+        });
+      }
+    </script>
   </body>
 </html>
