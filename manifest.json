@@ -4,24 +4,24 @@
   "description": "A real-time, voice-interactive AI companion with a deep, evolving personality.",
   "icons": [
     {
-      "src": "/assets/lily-icon.svg",
+      "src": "./assets/lily-icon.svg",
       "sizes": "any",
       "type": "image/svg+xml"
     },
     {
-      "src": "/assets/icon-192.png",
+      "src": "./assets/icon-192.png",
       "type": "image/png",
       "sizes": "192x192",
       "purpose": "any maskable"
     },
     {
-      "src": "/assets/icon-512.png",
+      "src": "./assets/icon-512.png",
       "type": "image/png",
       "sizes": "512x512",
       "purpose": "any maskable"
     }
   ],
-  "start_url": "/",
+  "start_url": ".",
   "display": "standalone",
   "orientation": "portrait",
   "theme_color": "#8b5cf6",

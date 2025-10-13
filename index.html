@@ -6,13 +6,13 @@
     <title>Lily - AI Companion</title>
 
     <!-- PWA & Mobile Enhancements -->
-    <link rel="manifest" href="/manifest.json" />
+    <link rel="manifest" href="./manifest.json" />
     <meta name="theme-color" content="#8b5cf6" />
-    <link rel="icon" href="/assets/lily-icon.svg" type="image/svg+xml">
+    <link rel="icon" href="./assets/lily-icon.svg" type="image/svg+xml">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Lily">
-    <link rel="apple-touch-icon" href="/assets/icon-192.png">
+    <link rel="apple-touch-icon" href="./assets/icon-192.png">
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script type="importmap">
@@ -44,11 +44,14 @@
 </head>
   <body class="bg-gray-900">
     <div id="root"></div>
-    <script type="module" src="/index.tsx"></script>
+    <!-- Add Babel Standalone for in-browser JSX/TS transpilation -->
+    <script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
+    <!-- The data-type="module" is important to tell Babel to treat this as an ES module -->
+    <script type="text/babel" data-type="module" src="./index.tsx"></script>
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js').then(registration => {
+          navigator.serviceWorker.register('./sw.js').then(registration => {
             console.log('ServiceWorker registrado con éxito:', registration.scope);
           }).catch(error => {
             console.log('Fallo en el registro del ServiceWorker:', error);

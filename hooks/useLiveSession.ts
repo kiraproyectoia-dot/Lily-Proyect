@@ -173,7 +173,9 @@ export const useLiveSession = () => {
         // Get microphone access before attempting to connect to the API.
         microphoneStreamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+        // IMPORTANT: Replace "YOUR_API_KEY_HERE" with your actual Gemini API key
+        const ai = new GoogleGenAI({ apiKey: "AIzaSyB6aBnAudIsGtarSpkQohehRmzue_AHDtU" });
+
         const sessionPromise = ai.live.connect({
             model: 'gemini-2.5-flash-native-audio-preview-09-2025',
             config: {
