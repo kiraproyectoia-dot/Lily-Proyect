@@ -14,7 +14,13 @@ declare global {
     // FIX: By extending ThreeElements, all @react-three/fiber elements are included
     // in JSX.IntrinsicElements, resolving type errors for components like <primitive>,
     // <ambientLight>, and <directionalLight>. This is more robust than listing them individually.
-    interface IntrinsicElements extends ThreeElements {
+    // UPDATE: The `extends ThreeElements` clause seems to fail in this specific environment.
+    // Manually adding the necessary elements as a workaround to fix the type errors.
+    interface IntrinsicElements {
+      primitive: ThreeElements['primitive'];
+      ambientLight: ThreeElements['ambientLight'];
+      directionalLight: ThreeElements['directionalLight'];
+      
       // FIX: Manually adding standard HTML and SVG elements because React's global JSX types
       // are not being picked up correctly in this project's configuration. This resolves
       // errors like "Property 'div' does not exist on type 'JSX.IntrinsicElements'".

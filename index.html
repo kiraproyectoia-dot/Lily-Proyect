@@ -46,8 +46,11 @@
     <div id="root"></div>
     <!-- Add Babel Standalone for in-browser JSX/TS transpilation -->
     <script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
-    <!-- The data-type="module" is important to tell Babel to treat this as an ES module -->
-    <script type="text/babel" data-type="module" src="./index.tsx"></script>
+    <!--
+      The data-presets attribute ensures Babel uses the correct transpilers for TypeScript and React's JSX syntax.
+      The data-type="module" is important to tell Babel to treat this as an ES module.
+    -->
+    <script type="text/babel" data-presets="react,typescript" data-type="module" src="./index.tsx"></script>
     <!--
     <script>
       if ('serviceWorker' in navigator) {
