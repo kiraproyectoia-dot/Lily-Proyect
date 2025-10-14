@@ -1,26 +1,25 @@
 import React, { Suspense, useEffect, useRef, useState } from 'react';
 // FIX: AnimationMixer and other 3D types are part of the 'three' library, not '@react-three/fiber'.
 // This resolves module export errors for AnimationMixer, AnimationAction, Bone, etc., and subsequent type errors.
-import { Canvas, useFrame, type ThreeElements } from '@react-three/fiber';
+// FIX: Removed `type` keyword from `ThreeElements` import to ensure it's available for JSX global augmentation.
+import { Canvas, useFrame, ThreeElements } from '@react-three/fiber';
 import { AnimationMixer, AnimationAction, LoopOnce, Bone, SkinnedMesh, Vector2, Euler, MathUtils } from 'three';
 import { useGLTF, OrbitControls } from '@react-three/drei';
 
-// FIX: Reverted to `declare global` for JSX namespace augmentation.
-// The `declare module 'react'` approach caused a module resolution error in this
-// specific setup, whereas `declare global` reliably extends JSX to include
-// @react-three/fiber's custom elements.
+// FIX: The project's TypeScript configuration has trouble resolving JSX types correctly.
+// To fix this, we'll use declaration merging. First, we extend IntrinsicElements
+// with ThreeElements for react-three-fiber components. Then, in a separate declaration,
+// we add the standard HTML elements that are missing. This two-step process
+// ensures both sets of components are correctly typed.
 declare global {
   namespace JSX {
-    // FIX: By extending ThreeElements, all @react-three/fiber elements are included
-    // in JSX.IntrinsicElements, resolving type errors for components like <primitive>,
-    // <ambientLight>, and <directionalLight>. This is more robust than listing them individually.
-    // UPDATE: The `extends ThreeElements` clause seems to fail in this specific environment.
-    // Manually adding the necessary elements as a workaround to fix the type errors.
+    interface IntrinsicElements extends ThreeElements {}
+  }
+}
+
+declare global {
+  namespace JSX {
     interface IntrinsicElements {
-      primitive: ThreeElements['primitive'];
-      ambientLight: ThreeElements['ambientLight'];
-      directionalLight: ThreeElements['directionalLight'];
-      
       // FIX: Manually adding standard HTML and SVG elements because React's global JSX types
       // are not being picked up correctly in this project's configuration. This resolves
       // errors like "Property 'div' does not exist on type 'JSX.IntrinsicElements'".
@@ -34,6 +33,8 @@ declare global {
       span: React.DetailedHTMLProps<React.HTMLAttributes<HTMLSpanElement>, HTMLSpanElement>;
       svg: React.SVGProps<SVGSVGElement>;
       path: React.SVGProps<SVGPathElement>;
+      form: React.DetailedHTMLProps<React.FormHTMLAttributes<HTMLFormElement>, HTMLFormElement>;
+      input: React.DetailedHTMLProps<React.InputHTMLAttributes<HTMLInputElement>, HTMLInputElement>;
     }
   }
 }

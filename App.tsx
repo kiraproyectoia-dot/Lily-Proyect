@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useLiveSession } from './hooks/useLiveSession';
 import { useDynamicBackground } from './hooks/useDynamicBackground';
 import { Avatar } from './components/Avatar';
 import { Controls } from './components/Controls';
 import { StatusIndicator } from './components/StatusIndicator';
 import { TranscriptionDisplay } from './components/TranscriptionDisplay';
+import { ChatInput } from './components/ChatInput'; 
 
 // The new static and reliable 3D avatar URL for Lily
 const LILY_AVATAR_URL = 'https://models.readyplayer.me/68e7ada78074ade6a70196db.glb';
@@ -15,14 +16,19 @@ const App: React.FC = () => {
     isConnecting,
     isMuted,
     isSpeaking,
+    isReplying, // Get the new state
     startSession,
     closeSession,
     toggleMute,
     error: sessionError,
     transcripts,
+    sendTextMessage,
   } = useLiveSession();
 
   const { imageUrl } = useDynamicBackground();
+  const [isChatVisible, setIsChatVisible] = useState(false);
+
+  const toggleChatVisibility = () => setIsChatVisible(prev => !prev);
 
   return (
     <div 
@@ -45,6 +51,8 @@ const App: React.FC = () => {
               onStart={startSession}
               onStop={closeSession}
               onMuteToggle={toggleMute}
+              isChatVisible={isChatVisible}
+              onChatToggle={toggleChatVisibility}
             />
           </div>
         </header>
@@ -52,17 +60,20 @@ const App: React.FC = () => {
         {/* Main content area split between Avatar and Transcription */}
         <main className="flex flex-col flex-grow overflow-hidden">
           {/* Avatar takes up the remaining flexible space */}
-          <div className="flex-grow relative">
+          <div className="flex-grow relative min-h-0">
             <Avatar 
               modelUrl={LILY_AVATAR_URL}
               isSpeaking={isSpeaking} 
             />
           </div>
           
-          {/* Transcription Display is in a fixed section at the bottom */}
-          <div className="flex-shrink-0 p-4 bg-black/40 border-t border-white/10">
-             <TranscriptionDisplay transcripts={transcripts} />
-          </div>
+          {/* Transcription Display is in a fixed section at the bottom, now conditional */}
+          {isChatVisible && (
+            <div className="flex-shrink-0 flex flex-col max-h-[35vh] bg-black/40 border-t border-white/10">
+               <TranscriptionDisplay transcripts={transcripts} />
+               {isConnected && <ChatInput onSendMessage={sendTextMessage} isReplying={isReplying} />}
+            </div>
+          )}
         </main>
 
         {sessionError && (

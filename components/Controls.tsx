@@ -1,22 +1,26 @@
 import React from 'react';
-import { PowerIcon, MicOnIcon, MicOffIcon, LoadingIcon } from '../constants';
+import { PowerIcon, MicOnIcon, MicOffIcon, LoadingIcon, ChatIcon } from '../constants';
 
 interface ControlsProps {
   isConnected: boolean;
   isConnecting: boolean;
   isMuted: boolean;
+  isChatVisible: boolean;
   onStart: () => void;
   onStop: () => void;
   onMuteToggle: () => void;
+  onChatToggle: () => void;
 }
 
 export const Controls: React.FC<ControlsProps> = ({
   isConnected,
   isConnecting,
   isMuted,
+  isChatVisible,
   onStart,
   onStop,
   onMuteToggle,
+  onChatToggle,
 }) => {
   return (
     <div className="flex items-center justify-center space-x-2">
@@ -35,6 +39,17 @@ export const Controls: React.FC<ControlsProps> = ({
         </button>
       ) : (
         <>
+          <button
+            onClick={onChatToggle}
+            className={`w-12 h-12 flex items-center justify-center rounded-full transition-colors duration-300 ${
+              isChatVisible
+                ? 'bg-purple-600 hover:bg-purple-500'
+                : 'bg-gray-700 hover:bg-gray-600'
+            }`}
+            aria-label={isChatVisible ? "Ocultar chat" : "Mostrar chat"}
+          >
+            <ChatIcon />
+          </button>
           <button
             onClick={onMuteToggle}
             className={`w-12 h-12 flex items-center justify-center rounded-full transition-colors duration-300 ${

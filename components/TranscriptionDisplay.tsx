@@ -33,12 +33,12 @@ export const TranscriptionDisplay: React.FC<TranscriptionDisplayProps> = ({ tran
     return (
         <div 
           ref={scrollRef} 
-          className="max-h-48 space-y-4 overflow-y-auto pr-2"
+          className="flex-grow p-4 space-y-4 overflow-y-auto pr-2"
           style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(168, 85, 247, 0.5) transparent' }}
         >
             {transcripts.length === 0 ? (
                 <div className="flex items-center justify-center h-full text-gray-300/90">
-                    <p className="text-center text-sm">Presiona el botón de encendido para iniciar la videollamada con Lily.</p>
+                    <p className="text-center text-sm">La transcripción del chat aparecerá aquí.</p>
                 </div>
             ) : (
                 transcripts.map((entry, index) => (
