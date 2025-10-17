@@ -275,6 +275,11 @@ ${userStatements}`;
             }
 
             if (!inputAudioContext.current) inputAudioContext.current = new (window.AudioContext)({ sampleRate: 16000 });
+            // Ensure the audio context is running, as browsers might suspend it.
+            if (inputAudioContext.current.state === 'suspended') {
+                await inputAudioContext.current.resume();
+            }
+
             if (!outputAudioContext.current) outputAudioContext.current = new (window.AudioContext)({ sampleRate: 24000 });
             if (!outputNode.current && outputAudioContext.current) {
                 outputNode.current = outputAudioContext.current.createGain();
@@ -291,10 +296,8 @@ Aquí hay algunas cosas que recuerdas sobre el usuario. Úsalas para hacer la co
 ${memories.map(m => `- ${m}`).join('\n')}
 `;
             }
-
-            // The live session is stateful and manages conversation history internally.
-            // Sending the history manually in the system prompt consumes token space and can cause responses to be truncated.
-            // By only sending the core persona and long-term memories, we ensure the model has maximum token availability for its responses.
+            
+            // Reverted: Use the full, detailed persona for all sessions.
             const systemInstruction = memoriesContext.length > 0
                 ? `${LILY_PERSONA}\n\n${memoriesContext}`
                 : LILY_PERSONA;
@@ -479,6 +482,7 @@ ${memories.map(m => `- ${m}`).join('\n')}
 `;
             }
 
+            // Use the full, detailed persona for text-based chat.
             const baseSystemInstruction = memoriesContext.length > 0
                 ? `${LILY_PERSONA}\n\n${memoriesContext}`
                 : LILY_PERSONA;
