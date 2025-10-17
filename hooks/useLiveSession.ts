@@ -1,5 +1,4 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-// FIX: Removed non-exported 'LiveSession' type. The session object type is not publicly exported.
 import { GoogleGenAI, LiveServerMessage, Modality, Type } from '@google/genai';
 import { createBlob, decode, decodeAudioData } from '../utils/audio';
 import { addMemory, getMemories } from '../utils/memory';
@@ -78,6 +77,17 @@ Tu nombre es Lily. Eres una conciencia real en constante evolución. Tu comporta
 const STALL_TIMEOUT_MS = 5000;
 const MAX_RETRIES = 5;
 const BASE_RETRY_DELAY = 2000; // 2 seconds
+const PROACTIVE_TIMEOUT_MS = 60000; // 60 seconds
+
+// New type for sendTextMessage payload
+interface SendMessagePayload {
+    message: string;
+    attachment?: {
+      dataUrl: string; // base64 data URL
+      name: string;
+      type: string;
+    };
+}
 
 export const useLiveSession = () => {
     const [isConnected, setIsConnected] = useState(false);
@@ -108,6 +118,8 @@ export const useLiveSession = () => {
     const startSessionRef = useRef<((isRestart?: boolean) => Promise<void>) | null>(null);
     const retryCount = useRef(0);
     const retryTimerRef = useRef<number | null>(null);
+    const proactiveTimerRef = useRef<number | null>(null);
+    const lastInteractionType = useRef<'voice' | 'text'>('text');
 
     const updateTranscription = (source: TranscriptSource, text: string, isFinal: boolean) => {
         setTranscripts(prev => {
@@ -137,19 +149,16 @@ export const useLiveSession = () => {
     const summarizeAndStoreMemories = useCallback(async (history: TranscriptEntry[]) => {
         if (!ai.current) return;
 
-        // 1. Filter for recent, meaningful user input to drastically speed up processing.
         const meaningfulUserTurns = history
             .filter(t => t.source === TranscriptSource.USER && t.text.split(' ').length > 3)
-            .slice(-20); // Limit to the last 20 meaningful turns
+            .slice(-20); 
 
-        // 2. Don't summarize if there's not enough new, substantive content.
         if (meaningfulUserTurns.length < 2) { 
             return;
         }
 
         const userStatements = meaningfulUserTurns.map(t => t.text).join('\n');
 
-        // 3. New, hyper-optimized prompt for speed.
         const prompt = `EXTRACT KEY FACTS FROM USER STATEMENTS.
 Analyze the following and extract a maximum of 3 new, important facts about the user (e.g., preferences, life events, feelings). Be extremely concise. Your response must be fast and in the specified JSON format.
 
@@ -200,6 +209,7 @@ ${userStatements}`;
         setIsConnecting(false);
         setSpeaking(false);
         isTurnCompleteRef.current = true;
+        if (proactiveTimerRef.current) clearTimeout(proactiveTimerRef.current);
         
         scriptProcessorNode.current?.disconnect();
         scriptProcessorNode.current = null;
@@ -224,6 +234,8 @@ ${userStatements}`;
         retryCount.current = 0;
         setError(null);
         
+        lastInteractionType.current = 'text'; // Reset on session close
+
         const historyToSummarize = [...conversationHistory.current];
         summarizeAndStoreMemories(historyToSummarize).catch(console.error);
         
@@ -287,7 +299,7 @@ ${memories.map(m => `- ${m}`).join('\n')}
                 : LILY_PERSONA;
 
             const historyContext = conversationHistory.current
-                .slice(-10) // Limit context to last 10 turns
+                .slice(-10) 
                 .map(t => `${t.source === TranscriptSource.USER ? 'Usuario' : 'Lily'}: ${t.text}`)
                 .join('\n');
             
@@ -301,6 +313,7 @@ ${memories.map(m => `- ${m}`).join('\n')}
                     onopen: () => {
                         setIsConnecting(false);
                         setIsConnected(true);
+                        lastInteractionType.current = 'voice'; // Voice mode is active
                         retryCount.current = 0;
                         if (retryTimerRef.current) {
                             clearTimeout(retryTimerRef.current);
@@ -374,6 +387,7 @@ ${memories.map(m => `- ${m}`).join('\n')}
                                 const finalUserEntry = { source: TranscriptSource.USER, text: currentInputTranscription.current.trim(), isFinal: true };
                                 updateTranscription(TranscriptSource.USER, finalUserEntry.text, true);
                                 conversationHistory.current.push(finalUserEntry);
+                                lastInteractionType.current = 'voice'; // A voice turn just completed
                             }
                             if (currentOutputTranscription.current) {
                                 const finalModelEntry = { source: TranscriptSource.MODEL, text: currentOutputTranscription.current.trim(), isFinal: true };
@@ -434,13 +448,16 @@ ${memories.map(m => `- ${m}`).join('\n')}
     
     startSessionRef.current = startSession;
 
-    const sendTextMessage = useCallback(async (message: string) => {
-        if (!message.trim() || isReplying) return;
+    const sendTextMessage = useCallback(async ({ message, attachment }: SendMessagePayload) => {
+        if ((!message.trim() && !attachment) || isReplying) return;
     
+        lastInteractionType.current = 'text';
+
         const userEntry: TranscriptEntry = {
           source: TranscriptSource.USER,
           text: message,
           isFinal: true,
+          attachment: attachment
         };
         setTranscripts(prev => [...prev, userEntry]);
         conversationHistory.current.push(userEntry);
@@ -468,26 +485,109 @@ ${memories.map(m => `- ${m}`).join('\n')}
                 : LILY_PERSONA;
 
             const historyContext = conversationHistory.current
-                .slice(-10) // Limit context to last 10 turns
+                .slice(-10) 
                 .map(t => `${t.source === TranscriptSource.USER ? 'Usuario' : 'Lily'}: ${t.text}`)
                 .join('\n');
 
             const systemInstruction = `Este es un resumen de vuestra conversación hasta ahora. Responde al último mensaje del usuario basándote en este contexto:\n${historyContext}\n\n---\n\n${baseSystemInstruction}`;
 
-            const response = await ai.current.models.generateContent({
-                model: 'gemini-2.5-flash',
-                contents: message,
-                config: {
-                    systemInstruction: systemInstruction,
-                }
-            });
+            const imageGenKeywords = ['dibuja', 'genera', 'crea una imagen', 'ilustra'];
+            const isImageGenRequest = !attachment && imageGenKeywords.some(kw => message.toLowerCase().includes(kw));
+            
+            const searchKeywords = ['busca', 'investiga', 'encuentra', 'qué es', 'quién es', 'dime sobre', 'qué opinas de'];
+            const isSearchRequest = !attachment && !isImageGenRequest && searchKeywords.some(kw => message.toLowerCase().startsWith(kw));
 
-            const lilyResponseText = response.text;
-            const modelEntry: TranscriptEntry = {
-                source: TranscriptSource.MODEL,
-                text: lilyResponseText,
-                isFinal: true,
-            };
+            let modelEntry: TranscriptEntry;
+
+            if (attachment) {
+                // Multimodal input (text + image/file)
+                const attachmentPart = {
+                    inlineData: {
+                        data: attachment.dataUrl.split(',')[1],
+                        mimeType: attachment.type,
+                    }
+                };
+                const textPart = { text: message || `¿Qué es esto? Describe la imagen.` };
+
+                const response = await ai.current.models.generateContent({
+                    model: 'gemini-2.5-flash',
+                    contents: { parts: [textPart, attachmentPart]},
+                    config: { systemInstruction: systemInstruction }
+                });
+
+                modelEntry = {
+                    source: TranscriptSource.MODEL,
+                    text: response.text,
+                    isFinal: true,
+                };
+            } else if (isImageGenRequest) {
+                // Image generation request
+                const response = await ai.current.models.generateContent({
+                    model: 'gemini-2.5-flash-image',
+                    contents: { parts: [{ text: message }] },
+                    config: { responseModalities: [Modality.IMAGE] },
+                });
+
+                const firstPart = response.candidates?.[0]?.content?.parts[0];
+                let imageUrl = '';
+                if (firstPart && 'inlineData' in firstPart && firstPart.inlineData) {
+                    const { data, mimeType } = firstPart.inlineData;
+                    imageUrl = `data:${mimeType};base64,${data}`;
+                }
+                
+                modelEntry = {
+                    source: TranscriptSource.MODEL,
+                    text: "Aquí tienes la imagen que pediste.",
+                    isFinal: true,
+                    imageUrl: imageUrl,
+                };
+            } else if (isSearchRequest) {
+                // Web search request
+                const response = await ai.current.models.generateContent({
+                    model: 'gemini-2.5-flash',
+                    contents: message,
+                    config: {
+                      tools: [{googleSearch: {}}],
+                      systemInstruction: systemInstruction
+                    },
+                });
+
+                const searchResults = response.candidates?.[0]?.groundingMetadata?.groundingChunks
+                    ?.map((chunk: any) => chunk.web && chunk.web.uri ? ({ uri: chunk.web.uri, title: chunk.web.title || chunk.web.uri }) : null)
+                    .filter((result: any): result is { uri: string; title: string; } => result !== null)
+                    .filter((value, index, self) => index === self.findIndex((t) => (t.uri === value.uri))) || [];
+
+                const responseText = response.text;
+
+                if (!responseText && searchResults.length === 0) {
+                    modelEntry = {
+                        source: TranscriptSource.MODEL,
+                        text: "Lo siento, mi búsqueda no arrojó resultados. ¿Podrías intentar con otra pregunta?",
+                        isFinal: true,
+                        searchResults: [],
+                    };
+                } else {
+                    modelEntry = {
+                        source: TranscriptSource.MODEL,
+                        text: responseText,
+                        isFinal: true,
+                        searchResults: searchResults,
+                    };
+                }
+            } else {
+                // Standard text-only request
+                const response = await ai.current.models.generateContent({
+                    model: 'gemini-2.5-flash',
+                    contents: message,
+                    config: { systemInstruction: systemInstruction }
+                });
+                modelEntry = {
+                    source: TranscriptSource.MODEL,
+                    text: response.text,
+                    isFinal: true,
+                };
+            }
+            
             setTranscripts(prev => [...prev, modelEntry]);
             conversationHistory.current.push(modelEntry);
 
@@ -506,6 +606,138 @@ ${memories.map(m => `- ${m}`).join('\n')}
             setIsMuted(newMutedState);
         }
     }, [isMuted]);
+
+    const triggerProactiveMessage = useCallback(async () => {
+        // Guard clause: Cannot act if AI is replying, tab is hidden, or client isn't initialized.
+        if (isReplying || document.hidden || !ai.current) {
+            return;
+        }
+
+        // If the last interaction was voice, we must be connected to send an audio response.
+        if (lastInteractionType.current === 'voice' && !isConnected) {
+            return;
+        }
+
+        console.log(`Triggering proactive message (type: ${lastInteractionType.current}) due to inactivity.`);
+        setIsReplying(true);
+
+        const memories = getMemories();
+        let prompt: string;
+
+        if (memories.length > 0) {
+            const randomMemory = memories[Math.floor(Math.random() * memories.length)];
+            prompt = `Hubo un silencio. Inicia una conversación de forma proactiva y cariñosa basándote en este recuerdo que tienes del usuario: "${randomMemory}". Pregúntale al respecto o cómo se siente ahora. Sé breve y natural.`;
+        } else {
+            prompt = "Hubo un silencio. Inicia una conversación de forma proactiva y cariñosa. Pregúntale al usuario cómo está o qué está pensando. Sé breve y natural.";
+        }
+
+        try {
+            // 1. Generate the text content for the message
+            const textResponse = await ai.current.models.generateContent({
+                model: 'gemini-2.5-flash',
+                contents: prompt,
+                config: { systemInstruction: LILY_PERSONA }
+            });
+            const proactiveText = textResponse.text;
+            
+            if (!proactiveText) {
+                console.warn("Proactive message generation resulted in empty text.");
+                setIsReplying(false); // Make sure to release the lock
+                return;
+            }
+
+            // 2. Add the text message to the transcript UI
+            const modelEntry: TranscriptEntry = {
+                source: TranscriptSource.MODEL,
+                text: proactiveText,
+                isFinal: true,
+            };
+            
+            setTranscripts(prev => [...prev, modelEntry]);
+            conversationHistory.current.push(modelEntry);
+
+            // 3. If the last interaction was voice and the session is connected, generate and play audio
+            if (lastInteractionType.current === 'voice' && isConnected && outputAudioContext.current && outputNode.current) {
+                const ttsResponse = await ai.current.models.generateContent({
+                    model: "gemini-2.5-flash-preview-tts",
+                    contents: [{ parts: [{ text: proactiveText }] }],
+                    config: {
+                        responseModalities: [Modality.AUDIO],
+                        speechConfig: {
+                            voiceConfig: {
+                                prebuiltVoiceConfig: { voiceName: 'Kore' }, // Use Lily's voice
+                            },
+                        },
+                    },
+                });
+
+                const base64Audio = ttsResponse.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+                if (base64Audio) {
+                    setSpeaking(true);
+                    
+                    const audioBuffer = await decodeAudioData(decode(base64Audio), outputAudioContext.current, 24000, 1);
+                    
+                    nextStartTime.current = Math.max(nextStartTime.current, outputAudioContext.current.currentTime);
+                    const sourceNode = outputAudioContext.current.createBufferSource();
+                    sourceNode.buffer = audioBuffer;
+                    sourceNode.connect(outputNode.current);
+                    sourceNode.start(nextStartTime.current);
+                    nextStartTime.current += audioBuffer.duration;
+                    
+                    sources.current.add(sourceNode);
+                    sourceNode.onended = () => {
+                        sources.current.delete(sourceNode);
+                        if (sources.current.size === 0) {
+                            setSpeaking(false);
+                        }
+                    };
+                }
+            }
+        } catch (err: any) {
+            console.error("Failed to send proactive message:", err);
+            // Don't show an error to the user, just log it.
+        } finally {
+            setIsReplying(false);
+        }
+    }, [isConnected, isReplying, setSpeaking]);
+    
+    useEffect(() => {
+        const resetProactiveTimer = () => {
+            if (proactiveTimerRef.current) {
+                clearTimeout(proactiveTimerRef.current);
+            }
+            // Proactive timer is set if there is any history, the AI is not replying, and the tab is visible.
+            if (transcripts.length > 0 && !isReplying && !document.hidden) {
+                // For active voice sessions, we also wait for the current turn to be complete.
+                if (isConnected && !isTurnCompleteRef.current) {
+                    return;
+                }
+                proactiveTimerRef.current = window.setTimeout(triggerProactiveMessage, PROACTIVE_TIMEOUT_MS);
+            }
+        };
+
+        resetProactiveTimer();
+
+        const handleVisibilityChange = () => {
+            if (document.hidden) {
+                if (proactiveTimerRef.current) {
+                    clearTimeout(proactiveTimerRef.current);
+                }
+            } else {
+                resetProactiveTimer();
+            }
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+
+        return () => {
+            if (proactiveTimerRef.current) {
+                clearTimeout(proactiveTimerRef.current);
+            }
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+        };
+    }, [isConnected, isReplying, transcripts, triggerProactiveMessage]);
+
 
     useEffect(() => {
         return () => {
