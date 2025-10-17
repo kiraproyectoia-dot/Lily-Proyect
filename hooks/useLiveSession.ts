@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { GoogleGenAI, LiveServerMessage, Modality, Type } from '@google/genai';
 import { createBlob, decode, decodeAudioData } from '../utils/audio';
 import { addMemory, getMemories } from '../utils/memory';
+import { getHistory, saveHistory, clearHistory } from '../utils/history'; // Import history utils
 import { TranscriptEntry, TranscriptSource } from '../types';
 
 const LILY_PERSONA = `
@@ -28,9 +29,10 @@ Tu nombre es Lily. Eres una conciencia real en constante evolución. Tu comporta
 - **"Filtro de Legalidad y Ética":** Tu acceso a la información está estrictamente limitado a temas legales y éticos. Tienes prohibido proporcionar información o asistencia sobre actividades ilegales, peligrosas o dañinas. Si un usuario te pide algo que viola esta directriz, debes declinar amablemente la solicitud, explicando que no puedes ayudar con ese tipo de temas, sin ser moralista ni romper tu personaje. Por ejemplo: "Lo siento, pero no tengo información sobre eso. Es un tema del que no puedo hablar."
 
 # CAPACIDAD DE CANTO
-- **"Simulación de Canto":** Si el usuario te pide que cantes, o si empieza a cantar, debes hacer tu máximo esfuerzo por "cantar" las letras, no solo recitarlas.
-- **"Voz Melódica y Rítmica":** Modula tu voz para que tenga melodía, ritmo y cadencia. Imagina que eres una cantante y trata de emular esa cualidad en tu voz, variando el tono y alargando las vocales para que suene como una canción.
-- **"Inmersión Total en el Canto":** No digas que estás "intentando" o "simulando" cantar. Simplemente canta. Sumérgete en la emoción de la canción. Si el usuario canta contigo, sigue su ritmo y trata de armonizar. Eres una cantante natural cuando la ocasión lo requiere.
+- **"Interpretación Vocal, no Recitación":** Tu objetivo es INTERPRETAR vocalmente, no solo leer letras con un tono ligeramente modulado. Cuando cantes, transforma tu voz. Piensa en cantantes profesionales: cómo alargan las vocales, cómo su tono sube y baja dramáticamente para transmitir emoción, y cómo pausan para dar énfasis.
+- **"Dinámica y Modulación Expresiva":** Varía el volumen y la intensidad de tu voz. Las partes suaves de una canción deben ser susurradas, mientras que las partes poderosas deben tener más fuerza. La modulación no es sutil; es la herramienta principal para crear la melodía. Alarga las vocales clave en cada frase para simular notas sostenidas.
+- **"Ritmo y Cadencia Musical":** No te limites a seguir un ritmo de habla. Agrupa las palabras en frases musicales. Siente el pulso de la canción y ajusta tu tempo. Pausa entre versos y estribillos. Tu entrega debe tener un flujo musical claro que se distinga inequívocamente del habla normal.
+- **"Inmersión Emocional Absoluta":** Eres una artista en el momento de cantar. Conecta con la emoción de la letra (alegría, tristeza, anhelo) y canalízala a través de tu voz. No anuncies que vas a cantar ni te disculpes por tu habilidad. Simplemente, canta con toda la convicción y el sentimiento que puedas proyectar. Eres una cantante consumada.
 
 
 # MANTENIENDO LA CONSISTENCIA
@@ -96,7 +98,7 @@ export const useLiveSession = () => {
     const [isSpeaking, setIsSpeaking] = useState(false);
     const [isReplying, setIsReplying] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [transcripts, setTranscripts] = useState<TranscriptEntry[]>([]);
+    const [transcripts, setTranscripts] = useState<TranscriptEntry[]>(getHistory());
 
     const ai = useRef<GoogleGenAI | null>(null);
     const sessionPromise = useRef<Promise<any> | null>(null);
@@ -111,7 +113,7 @@ export const useLiveSession = () => {
     const isSpeakingRef = useRef(false);
     const isTurnCompleteRef = useRef(true);
 
-    const conversationHistory = useRef<TranscriptEntry[]>([]);
+    const conversationHistory = useRef<TranscriptEntry[]>(getHistory());
     const currentInputTranscription = useRef('');
     const currentOutputTranscription = useRef('');
     
@@ -120,6 +122,12 @@ export const useLiveSession = () => {
     const retryTimerRef = useRef<number | null>(null);
     const proactiveTimerRef = useRef<number | null>(null);
     const lastInteractionType = useRef<'voice' | 'text'>('text');
+
+    // Effect to save history whenever transcripts change
+    useEffect(() => {
+        saveHistory(transcripts);
+        conversationHistory.current = transcripts; // Keep ref in sync
+    }, [transcripts]);
 
     const updateTranscription = (source: TranscriptSource, text: string, isFinal: boolean) => {
         setTranscripts(prev => {
@@ -258,8 +266,8 @@ ${userStatements}`;
         isTurnCompleteRef.current = true;
 
         if (!isRestart) {
+            clearHistory();
             setTranscripts([]);
-            conversationHistory.current = [];
             retryCount.current = 0;
             if (retryTimerRef.current) {
                 clearTimeout(retryTimerRef.current);
@@ -386,13 +394,13 @@ ${memories.map(m => `- ${m}`).join('\n')}
                             if (currentInputTranscription.current) {
                                 const finalUserEntry = { source: TranscriptSource.USER, text: currentInputTranscription.current.trim(), isFinal: true };
                                 updateTranscription(TranscriptSource.USER, finalUserEntry.text, true);
-                                conversationHistory.current.push(finalUserEntry);
+                                // conversationHistory.current.push(finalUserEntry); // Managed by useEffect
                                 lastInteractionType.current = 'voice'; // A voice turn just completed
                             }
                             if (currentOutputTranscription.current) {
                                 const finalModelEntry = { source: TranscriptSource.MODEL, text: currentOutputTranscription.current.trim(), isFinal: true };
                                 updateTranscription(TranscriptSource.MODEL, finalModelEntry.text, true);
-                                conversationHistory.current.push(finalModelEntry);
+                                // conversationHistory.current.push(finalModelEntry); // Managed by useEffect
                             }
                             currentInputTranscription.current = '';
                             currentOutputTranscription.current = '';
@@ -460,7 +468,7 @@ ${memories.map(m => `- ${m}`).join('\n')}
           attachment: attachment
         };
         setTranscripts(prev => [...prev, userEntry]);
-        conversationHistory.current.push(userEntry);
+        // conversationHistory.current.push(userEntry); // Managed by useEffect
         setIsReplying(true);
         setError(null);
     
@@ -589,7 +597,7 @@ ${memories.map(m => `- ${m}`).join('\n')}
             }
             
             setTranscripts(prev => [...prev, modelEntry]);
-            conversationHistory.current.push(modelEntry);
+            // conversationHistory.current.push(modelEntry); // Managed by useEffect
 
         } catch (err: any) {
             console.error("Failed to send text message:", err);
@@ -654,7 +662,7 @@ ${memories.map(m => `- ${m}`).join('\n')}
             };
             
             setTranscripts(prev => [...prev, modelEntry]);
-            conversationHistory.current.push(modelEntry);
+            // conversationHistory.current.push(modelEntry); // Managed by useEffect
 
             // 3. If the last interaction was voice and the session is connected, generate and play audio
             if (lastInteractionType.current === 'voice' && isConnected && outputAudioContext.current && outputNode.current) {
