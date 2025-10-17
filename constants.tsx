@@ -1,5 +1,8 @@
 import React from 'react';
 
+// Centralized constant for the background image to ensure consistency and prevent data corruption.
+export const ABSTRACT_WAVE_BACKGROUND = `https://images.unsplash.com/photo-1617994452722-4145e196248b?ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8M3x8b25kYXMlMjBlbGVjdHJvbWFnbiVDMyVBOXRpY2FzfGVufDB8fDB8fHww&auto=format&fit=crop&q=60&w=1200`;
+
 export const PowerIcon: React.FC<{ className?: string }> = ({ className = "w-6 h-6" }) => (
   <svg xmlns="http://www.w3.org/2000/svg" className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.636 5.636a9 9 0 1012.728 0M12 3v9" />

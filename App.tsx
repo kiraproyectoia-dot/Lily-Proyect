@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { useLiveSession } from './hooks/useLiveSession';
-import { useDynamicBackground } from './hooks/useDynamicBackground';
 import { Avatar } from './components/Avatar';
 import { Controls } from './components/Controls';
 import { StatusIndicator } from './components/StatusIndicator';
 import { TranscriptionDisplay } from './components/TranscriptionDisplay';
 import { ChatInput } from './components/ChatInput'; 
+import { ABSTRACT_WAVE_BACKGROUND } from './constants';
 
 // The new static and reliable 3D avatar URL for Lily
 const LILY_AVATAR_URL = 'https://models.readyplayer.me/68e7ada78074ade6a70196db.glb';
@@ -25,17 +25,13 @@ const App: React.FC = () => {
     sendTextMessage,
   } = useLiveSession();
 
-  const { imageUrl } = useDynamicBackground();
   const [isChatVisible, setIsChatVisible] = useState(false);
 
   const toggleChatVisibility = () => setIsChatVisible(prev => !prev);
 
   return (
     <div 
-        className="relative text-white min-h-screen flex flex-col items-center justify-center p-4 font-sans bg-cover bg-center transition-all duration-1000"
-        style={{ 
-          backgroundImage: `linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)), url(${imageUrl})`
-        }}
+        className="relative text-white min-h-screen flex flex-col items-center justify-center p-4 font-sans transition-all duration-1000"
     >
       <div className="relative w-full max-w-5xl h-[95vh] flex flex-col bg-black/30 rounded-2xl shadow-2xl backdrop-blur-lg border border-white/10 overflow-hidden">
         <header className="flex items-center justify-between p-4 border-b border-white/10 flex-shrink-0 z-10">
@@ -61,6 +57,11 @@ const App: React.FC = () => {
         <main className="flex flex-col flex-grow overflow-hidden">
           {/* Avatar takes up the remaining flexible space */}
           <div className="flex-grow relative min-h-0">
+            <img 
+              src={ABSTRACT_WAVE_BACKGROUND}
+              alt="Abstract background waves"
+              className="absolute inset-0 w-full h-full object-cover opacity-30 blur-sm"
+            />
             <Avatar 
               modelUrl={LILY_AVATAR_URL}
               isSpeaking={isSpeaking} 
