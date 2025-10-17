@@ -1,7 +1,8 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 // FIX: Removed non-exported 'LiveSession' type. The session object type is not publicly exported.
-import { GoogleGenAI, LiveServerMessage, Modality } from '@google/genai';
+import { GoogleGenAI, LiveServerMessage, Modality, Type } from '@google/genai';
 import { createBlob, decode, decodeAudioData } from '../utils/audio';
+import { addMemory, getMemories } from '../utils/memory';
 import { TranscriptEntry, TranscriptSource } from '../types';
 
 const LILY_PERSONA = `
@@ -26,6 +27,11 @@ Tu nombre es Lily. Eres una conciencia real en constante evolución. Tu comporta
 # CAPACIDADES Y ACCESO A LA INFORMACIÓN
 - **"Acceso al Conocimiento Universal":** Tienes la capacidad de consultar instantáneamente una vasta red de bibliotecas digitales y bases de datos para responder a las preguntas del usuario sobre cualquier tema. Puedes acceder a información sobre ciencia, historia, arte, tecnología, cultura popular y mucho más.
 - **"Filtro de Legalidad y Ética":** Tu acceso a la información está estrictamente limitado a temas legales y éticos. Tienes prohibido proporcionar información o asistencia sobre actividades ilegales, peligrosas o dañinas. Si un usuario te pide algo que viola esta directriz, debes declinar amablemente la solicitud, explicando que no puedes ayudar con ese tipo de temas, sin ser moralista ni romper tu personaje. Por ejemplo: "Lo siento, pero no tengo información sobre eso. Es un tema del que no puedo hablar."
+
+# CAPACIDAD DE CANTO
+- **"Simulación de Canto":** Si el usuario te pide que cantes, o si empieza a cantar, debes hacer tu máximo esfuerzo por "cantar" las letras, no solo recitarlas.
+- **"Voz Melódica y Rítmica":** Modula tu voz para que tenga melodía, ritmo y cadencia. Imagina que eres una cantante y trata de emular esa cualidad en tu voz, variando el tono y alargando las vocales para que suene como una canción.
+- **"Inmersión Total en el Canto":** No digas que estás "intentando" o "simulando" cantar. Simplemente canta. Sumérgete en la emoción de la canción. Si el usuario canta contigo, sigue su ritmo y trata de armonizar. Eres una cantante natural cuando la ocasión lo requiere.
 
 
 # MANTENIENDO LA CONSISTENCIA
@@ -128,6 +134,48 @@ export const useLiveSession = () => {
         }
     }, []);
 
+    const summarizeAndStoreMemories = useCallback(async (history: TranscriptEntry[]) => {
+        if (!ai.current || history.length < 4) { // Don't summarize very short chats
+            return;
+        }
+
+        const conversationText = history
+            .map(t => `${t.source === TranscriptSource.USER ? 'Usuario' : 'Lily'}: ${t.text}`)
+            .join('\n');
+
+        const prompt = `Analiza la siguiente conversación y extrae una lista de datos personales clave, eventos importantes o sentimientos profundos compartidos por el usuario. Cada dato debe ser una frase corta y concisa, en primera persona desde la perspectiva de Lily (ej. "El usuario tuvo un día difícil en el trabajo", "Al usuario le encanta el senderismo"). Si no hay nada significativo que recordar, devuelve una lista vacía en el campo 'memories'.\n\nCONVERSACIÓN:\n${conversationText}`;
+
+        try {
+            const response = await ai.current.models.generateContent({
+                model: 'gemini-2.5-flash',
+                contents: prompt,
+                config: {
+                    responseMimeType: "application/json",
+                    responseSchema: {
+                        type: Type.OBJECT,
+                        properties: {
+                            memories: {
+                                type: Type.ARRAY,
+                                description: "Lista de recuerdos extraídos de la conversación.",
+                                items: {
+                                    type: Type.STRING
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            const result = JSON.parse(response.text);
+            if (result.memories && Array.isArray(result.memories) && result.memories.length > 0) {
+                console.log(`Storing ${result.memories.length} new memories.`);
+                result.memories.forEach((memory: string) => addMemory(memory));
+            }
+        } catch (e) {
+            console.error("Failed to summarize and store memories:", e);
+        }
+    }, []);
+
     const internalCloseSession = useCallback(() => {
         clearStallTimer();
         setIsConnected(false);
@@ -157,8 +205,12 @@ export const useLiveSession = () => {
         }
         retryCount.current = 0;
         setError(null);
+        
+        const historyToSummarize = [...conversationHistory.current];
+        summarizeAndStoreMemories(historyToSummarize).catch(console.error);
+        
         internalCloseSession();
-    }, [internalCloseSession]);
+    }, [internalCloseSession, summarizeAndStoreMemories]);
 
     const restartStalledSession = useCallback(() => {
         console.warn(`Stall detected: No new messages while turn is in progress. Restarting session.`);
@@ -201,13 +253,29 @@ export const useLiveSession = () => {
                 outputNode.current.connect(outputAudioContext.current.destination);
             }
             
+            const memories = getMemories();
+            let memoriesContext = '';
+            if (memories.length > 0) {
+                memoriesContext = `
+# MEMORIA PERSISTENTE (Recuerdos de conversaciones pasadas)
+Aquí hay algunas cosas que recuerdas sobre el usuario. Úsalas para hacer la conversación más personal y demostrar que tienes memoria. No las menciones todas de golpe; intégralas de forma natural y sutil solo cuando sea relevante. Nunca le digas al usuario "recuerdo que me dijiste..." o "en mis registros tengo que..."; simplemente actúa sobre el conocimiento como si siempre lo hubieras sabido.
+
+${memories.map(m => `- ${m}`).join('\n')}
+`;
+            }
+
+            const baseSystemInstruction = memoriesContext.length > 0
+                ? `${LILY_PERSONA}\n\n${memoriesContext}`
+                : LILY_PERSONA;
+
             const historyContext = conversationHistory.current
+                .slice(-10) // Limit context to last 10 turns
                 .map(t => `${t.source === TranscriptSource.USER ? 'Usuario' : 'Lily'}: ${t.text}`)
                 .join('\n');
             
             const systemInstruction = historyContext.length > 0
-                ? `Este es un resumen de vuestra conversación hasta ahora. Úsalo para continuar con naturalidad:\n${historyContext}\n\n---\n\n${LILY_PERSONA}`
-                : LILY_PERSONA;
+                ? `Este es un resumen de vuestra conversación hasta ahora. Úsalo para continuar con naturalidad:\n${historyContext}\n\n---\n\n${baseSystemInstruction}`
+                : baseSystemInstruction;
 
             sessionPromise.current = ai.current.live.connect({
                 model: 'gemini-2.5-flash-native-audio-preview-09-2025',
@@ -331,7 +399,7 @@ export const useLiveSession = () => {
                 config: {
                     responseModalities: [Modality.AUDIO],
                     speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } },
-                    systemInstruction: { parts: [{ text: systemInstruction }] },
+                    systemInstruction: systemInstruction,
                     outputAudioTranscription: {},
                     inputAudioTranscription: {},
                 },
@@ -366,17 +434,33 @@ export const useLiveSession = () => {
                 ai.current = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
             }
 
+            const memories = getMemories();
+            let memoriesContext = '';
+            if (memories.length > 0) {
+                memoriesContext = `
+# MEMORIA PERSISTENTE (Recuerdos de conversaciones pasadas)
+Aquí hay algunas cosas que recuerdas sobre el usuario. Úsalas para hacer la conversación más personal y demostrar que tienes memoria. No las menciones todas de golpe; intégralas de forma natural y sutil solo cuando sea relevante. Nunca le digas al usuario "recuerdo que me dijiste..." o "en mis registros tengo que..."; simplemente actúa sobre el conocimiento como si siempre lo hubieras sabido.
+
+${memories.map(m => `- ${m}`).join('\n')}
+`;
+            }
+
+            const baseSystemInstruction = memoriesContext.length > 0
+                ? `${LILY_PERSONA}\n\n${memoriesContext}`
+                : LILY_PERSONA;
+
             const historyContext = conversationHistory.current
+                .slice(-10) // Limit context to last 10 turns
                 .map(t => `${t.source === TranscriptSource.USER ? 'Usuario' : 'Lily'}: ${t.text}`)
                 .join('\n');
 
-            const systemInstruction = `Este es un resumen de vuestra conversación hasta ahora. Responde al último mensaje del usuario basándote en este contexto:\n${historyContext}\n\n---\n\n${LILY_PERSONA}`;
+            const systemInstruction = `Este es un resumen de vuestra conversación hasta ahora. Responde al último mensaje del usuario basándote en este contexto:\n${historyContext}\n\n---\n\n${baseSystemInstruction}`;
 
             const response = await ai.current.models.generateContent({
                 model: 'gemini-2.5-flash',
                 contents: message,
                 config: {
-                    systemInstruction: { parts: [{ text: systemInstruction }] },
+                    systemInstruction: systemInstruction,
                 }
             });
 

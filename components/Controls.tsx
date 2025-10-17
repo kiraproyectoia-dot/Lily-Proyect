@@ -1,5 +1,5 @@
 import React from 'react';
-import { PowerIcon, MicOnIcon, MicOffIcon, LoadingIcon, ChatIcon } from '../constants';
+import { PowerIcon, MicOnIcon, MicOffIcon, LoadingIcon, ChatIcon, JournalIcon } from '../constants';
 
 // FIX: Manually adding standard HTML and SVG element types to the global JSX namespace.
 // The project's TypeScript configuration appears to be misconfigured, preventing it from
@@ -30,10 +30,12 @@ interface ControlsProps {
   isConnecting: boolean;
   isMuted: boolean;
   isChatVisible: boolean;
+  isMemoryJournalVisible: boolean;
   onStart: () => void;
   onStop: () => void;
   onMuteToggle: () => void;
   onChatToggle: () => void;
+  onMemoryJournalToggle: () => void;
 }
 
 export const Controls: React.FC<ControlsProps> = ({
@@ -41,10 +43,12 @@ export const Controls: React.FC<ControlsProps> = ({
   isConnecting,
   isMuted,
   isChatVisible,
+  isMemoryJournalVisible,
   onStart,
   onStop,
   onMuteToggle,
   onChatToggle,
+  onMemoryJournalToggle,
 }) => {
   return (
     <div className="flex items-center justify-center space-x-2">
@@ -73,6 +77,17 @@ export const Controls: React.FC<ControlsProps> = ({
             aria-label={isChatVisible ? "Ocultar chat" : "Mostrar chat"}
           >
             <ChatIcon />
+          </button>
+          <button
+            onClick={onMemoryJournalToggle}
+            className={`w-12 h-12 flex items-center justify-center rounded-full transition-colors duration-300 ${
+              isMemoryJournalVisible
+                ? 'bg-neutral-700 hover:bg-neutral-600'
+                : 'bg-neutral-800 hover:bg-neutral-700'
+            }`}
+            aria-label={isMemoryJournalVisible ? "Ocultar diario" : "Mostrar diario"}
+          >
+            <JournalIcon />
           </button>
           <button
             onClick={onMuteToggle}

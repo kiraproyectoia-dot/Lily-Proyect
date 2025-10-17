@@ -5,6 +5,7 @@ import { Controls } from './components/Controls';
 import { StatusIndicator } from './components/StatusIndicator';
 import { TranscriptionDisplay } from './components/TranscriptionDisplay';
 import { ChatInput } from './components/ChatInput'; 
+import { MemoryJournal } from './components/MemoryJournal';
 import { LILY_BACKGROUND_MEDIA_URL } from './constants';
 
 // The new static and reliable 3D avatar URL for Lily
@@ -26,8 +27,10 @@ const App: React.FC = () => {
   } = useLiveSession();
 
   const [isChatVisible, setIsChatVisible] = useState(false);
+  const [isMemoryJournalVisible, setIsMemoryJournalVisible] = useState(false);
 
   const toggleChatVisibility = () => setIsChatVisible(prev => !prev);
+  const toggleMemoryJournalVisibility = () => setIsMemoryJournalVisible(prev => !prev);
 
   return (
     <div 
@@ -49,6 +52,8 @@ const App: React.FC = () => {
               onMuteToggle={toggleMute}
               isChatVisible={isChatVisible}
               onChatToggle={toggleChatVisibility}
+              isMemoryJournalVisible={isMemoryJournalVisible}
+              onMemoryJournalToggle={toggleMemoryJournalVisibility}
             />
           </div>
         </header>
@@ -80,6 +85,8 @@ const App: React.FC = () => {
             </div>
           )}
         </main>
+
+        {isMemoryJournalVisible && <MemoryJournal onClose={toggleMemoryJournalVisibility} />}
 
         {sessionError && (
             <footer className="p-2 text-center bg-red-800/50 text-red-300 text-sm border-t border-neutral-800 flex-shrink-0 z-10">
