@@ -135,15 +135,26 @@ export const useLiveSession = () => {
     }, []);
 
     const summarizeAndStoreMemories = useCallback(async (history: TranscriptEntry[]) => {
-        if (!ai.current || history.length < 4) { // Don't summarize very short chats
+        if (!ai.current) return;
+
+        // 1. Filter for recent, meaningful user input to drastically speed up processing.
+        const meaningfulUserTurns = history
+            .filter(t => t.source === TranscriptSource.USER && t.text.split(' ').length > 3)
+            .slice(-20); // Limit to the last 20 meaningful turns
+
+        // 2. Don't summarize if there's not enough new, substantive content.
+        if (meaningfulUserTurns.length < 2) { 
             return;
         }
 
-        const conversationText = history
-            .map(t => `${t.source === TranscriptSource.USER ? 'Usuario' : 'Lily'}: ${t.text}`)
-            .join('\n');
+        const userStatements = meaningfulUserTurns.map(t => t.text).join('\n');
 
-        const prompt = `Analiza la siguiente conversación y extrae una lista de datos personales clave, eventos importantes o sentimientos profundos compartidos por el usuario. Cada dato debe ser una frase corta y concisa, en primera persona desde la perspectiva de Lily (ej. "El usuario tuvo un día difícil en el trabajo", "Al usuario le encanta el senderismo"). Si no hay nada significativo que recordar, devuelve una lista vacía en el campo 'memories'.\n\nCONVERSACIÓN:\n${conversationText}`;
+        // 3. New, hyper-optimized prompt for speed.
+        const prompt = `EXTRACT KEY FACTS FROM USER STATEMENTS.
+Analyze the following and extract a maximum of 3 new, important facts about the user (e.g., preferences, life events, feelings). Be extremely concise. Your response must be fast and in the specified JSON format.
+
+USER STATEMENTS:
+${userStatements}`;
 
         try {
             const response = await ai.current.models.generateContent({
@@ -156,7 +167,7 @@ export const useLiveSession = () => {
                         properties: {
                             memories: {
                                 type: Type.ARRAY,
-                                description: "Lista de recuerdos extraídos de la conversación.",
+                                description: "List of new, key facts extracted from the user's statements.",
                                 items: {
                                     type: Type.STRING
                                 }
@@ -166,7 +177,14 @@ export const useLiveSession = () => {
                 }
             });
 
-            const result = JSON.parse(response.text);
+            let jsonString = response.text.trim();
+            if (jsonString.startsWith('```json')) {
+                jsonString = jsonString.substring(7, jsonString.length - 3).trim();
+            } else if (jsonString.startsWith('```')) {
+                jsonString = jsonString.substring(3, jsonString.length - 3).trim();
+            }
+
+            const result = JSON.parse(jsonString);
             if (result.memories && Array.isArray(result.memories) && result.memories.length > 0) {
                 console.log(`Storing ${result.memories.length} new memories.`);
                 result.memories.forEach((memory: string) => addMemory(memory));
@@ -412,7 +430,7 @@ ${memories.map(m => `- ${m}`).join('\n')}
             setError(`Error al iniciar: ${err.message}`);
             setIsConnecting(false);
         }
-    }, [internalCloseSession, clearStallTimer, restartStalledSession, setSpeaking]);
+    }, [internalCloseSession, clearStallTimer, restartStalledSession, setSpeaking, summarizeAndStoreMemories]);
     
     startSessionRef.current = startSession;
 
