@@ -36,6 +36,7 @@ interface ControlsProps {
   onMuteToggle: () => void;
   onChatToggle: () => void;
   onMemoryJournalToggle: () => void;
+  onClearChat: () => void; // Prop remains for type safety but is unused
 }
 
 export const Controls: React.FC<ControlsProps> = ({

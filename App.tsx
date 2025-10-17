@@ -6,7 +6,7 @@ import { StatusIndicator } from './components/StatusIndicator';
 import { TranscriptionDisplay } from './components/TranscriptionDisplay';
 import { ChatInput } from './components/ChatInput'; 
 import { MemoryJournal } from './components/MemoryJournal';
-import { LILY_BACKGROUND_MEDIA_URL } from './constants';
+import { LILY_BACKGROUND_MEDIA_URL, TrashIcon } from './constants';
 
 // The new static and reliable 3D avatar URL for Lily
 const LILY_AVATAR_URL = 'https://models.readyplayer.me/68e7ada78074ade6a70196db.glb';
@@ -24,6 +24,7 @@ const App: React.FC = () => {
     error: sessionError,
     transcripts,
     sendTextMessage,
+    clearChatHistory,
   } = useLiveSession();
 
   const [isChatVisible, setIsChatVisible] = useState(false);
@@ -54,6 +55,7 @@ const App: React.FC = () => {
               onChatToggle={toggleChatVisibility}
               isMemoryJournalVisible={isMemoryJournalVisible}
               onMemoryJournalToggle={toggleMemoryJournalVisibility}
+              onClearChat={clearChatHistory} // This prop is now unused by Controls, but keeping it doesn't harm
             />
           </div>
         </header>
@@ -79,8 +81,19 @@ const App: React.FC = () => {
           
           {/* Transcription Display is in a fixed section at the bottom, now conditional */}
           {isChatVisible && (
-            <div className="flex-shrink-0 flex flex-col max-h-[35vh] bg-black/40 border-t border-neutral-800">
-               <TranscriptionDisplay transcripts={transcripts} />
+            <div className="flex-shrink-0 flex flex-col max-h-[40vh] bg-black/40 border-t border-neutral-800">
+               {/* Chat Header with Clear Button */}
+               <div className="flex items-center justify-between p-2 border-b border-neutral-800/50 flex-shrink-0">
+                  <h3 className="text-sm font-semibold text-gray-300 pl-2">Chat</h3>
+                  <button
+                    onClick={clearChatHistory}
+                    className="p-2 rounded-full text-gray-400 hover:text-red-500 hover:bg-neutral-700 transition-colors"
+                    aria-label="Limpiar chat"
+                  >
+                    <TrashIcon />
+                  </button>
+               </div>
+               <TranscriptionDisplay transcripts={transcripts} isReplying={isReplying} isSpeaking={isSpeaking} />
                {isConnected && <ChatInput onSendMessage={sendTextMessage} isReplying={isReplying} />}
             </div>
           )}

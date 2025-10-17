@@ -3,6 +3,8 @@ import { TranscriptEntry, TranscriptSource } from '../types';
 
 interface TranscriptionDisplayProps {
   transcripts: TranscriptEntry[];
+  isReplying: boolean;
+  isSpeaking: boolean;
 }
 
 const TranscriptBubble: React.FC<{ entry: TranscriptEntry }> = ({ entry }) => {
@@ -54,14 +56,28 @@ const TranscriptBubble: React.FC<{ entry: TranscriptEntry }> = ({ entry }) => {
   );
 };
 
-export const TranscriptionDisplay: React.FC<TranscriptionDisplayProps> = ({ transcripts }) => {
+const TypingIndicatorBubble: React.FC = () => (
+    <div
+      className={`max-w-xs sm:max-w-md md:max-w-lg p-3 rounded-2xl transition-all duration-300 shadow-md flex flex-col gap-2 bg-neutral-800/80 self-start`}
+    >
+      <div className="flex items-center space-x-1.5 h-5">
+        <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse [animation-delay:-0.3s]"></div>
+        <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse [animation-delay:-0.15s]"></div>
+        <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse"></div>
+      </div>
+    </div>
+  );
+
+export const TranscriptionDisplay: React.FC<TranscriptionDisplayProps> = ({ transcripts, isReplying, isSpeaking }) => {
     const scrollRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         if (scrollRef.current) {
             scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
         }
-    }, [transcripts]);
+    }, [transcripts, isReplying, isSpeaking]);
+
+    const showTypingIndicator = isReplying && !isSpeaking;
 
     return (
         <div 
@@ -69,16 +85,23 @@ export const TranscriptionDisplay: React.FC<TranscriptionDisplayProps> = ({ tran
           className="flex-grow p-4 space-y-4 overflow-y-auto pr-2"
           style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(156, 163, 175, 0.5) transparent' }}
         >
-            {transcripts.length === 0 ? (
+            {transcripts.length === 0 && !showTypingIndicator ? (
                 <div className="flex items-center justify-center h-full text-gray-400/90">
                     <p className="text-center text-sm">La transcripción del chat aparecerá aquí.</p>
                 </div>
             ) : (
-                transcripts.map((entry, index) => (
-                    <div key={index} className="flex flex-col">
-                        <TranscriptBubble entry={entry} />
-                    </div>
-                ))
+                <>
+                    {transcripts.map((entry, index) => (
+                        <div key={index} className="flex flex-col">
+                            <TranscriptBubble entry={entry} />
+                        </div>
+                    ))}
+                    {showTypingIndicator && (
+                        <div className="flex flex-col">
+                            <TypingIndicatorBubble />
+                        </div>
+                    )}
+                </>
             )}
         </div>
     );
