@@ -5,7 +5,7 @@ import { Controls } from './components/Controls';
 import { StatusIndicator } from './components/StatusIndicator';
 import { TranscriptionDisplay } from './components/TranscriptionDisplay';
 import { ChatInput } from './components/ChatInput'; 
-import { ABSTRACT_WAVE_BACKGROUND } from './constants';
+import { LILY_BACKGROUND_MEDIA_URL } from './constants';
 
 // The new static and reliable 3D avatar URL for Lily
 const LILY_AVATAR_URL = 'https://models.readyplayer.me/68e7ada78074ade6a70196db.glb';
@@ -33,9 +33,9 @@ const App: React.FC = () => {
     <div 
         className="relative text-white min-h-screen flex flex-col items-center justify-center p-4 font-sans transition-all duration-1000"
     >
-      <div className="relative w-full max-w-5xl h-[95vh] flex flex-col bg-black/30 rounded-2xl shadow-2xl backdrop-blur-lg border border-white/10 overflow-hidden">
-        <header className="flex items-center justify-between p-4 border-b border-white/10 flex-shrink-0 z-10">
-          <h1 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-pink-400 to-purple-500">
+      <div className="relative w-full max-w-5xl h-[95vh] flex flex-col bg-neutral-900/70 rounded-2xl shadow-2xl backdrop-blur-lg border border-neutral-800 overflow-hidden">
+        <header className="flex items-center justify-between p-4 border-b border-neutral-800 flex-shrink-0 z-10">
+          <h1 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-500">
             Lily
           </h1>
           <div className="flex items-center space-x-4">
@@ -57,10 +57,14 @@ const App: React.FC = () => {
         <main className="flex flex-col flex-grow overflow-hidden">
           {/* Avatar takes up the remaining flexible space */}
           <div className="flex-grow relative min-h-0">
-            <img 
-              src={ABSTRACT_WAVE_BACKGROUND}
-              alt="Abstract background waves"
-              className="absolute inset-0 w-full h-full object-cover opacity-30 blur-sm"
+            <video
+              key={LILY_BACKGROUND_MEDIA_URL}
+              autoPlay
+              loop
+              muted
+              playsInline
+              src={LILY_BACKGROUND_MEDIA_URL}
+              className="absolute inset-0 w-full h-full object-cover opacity-50"
             />
             <Avatar 
               modelUrl={LILY_AVATAR_URL}
@@ -70,7 +74,7 @@ const App: React.FC = () => {
           
           {/* Transcription Display is in a fixed section at the bottom, now conditional */}
           {isChatVisible && (
-            <div className="flex-shrink-0 flex flex-col max-h-[35vh] bg-black/40 border-t border-white/10">
+            <div className="flex-shrink-0 flex flex-col max-h-[35vh] bg-black/40 border-t border-neutral-800">
                <TranscriptionDisplay transcripts={transcripts} />
                {isConnected && <ChatInput onSendMessage={sendTextMessage} isReplying={isReplying} />}
             </div>
@@ -78,7 +82,7 @@ const App: React.FC = () => {
         </main>
 
         {sessionError && (
-            <footer className="p-2 text-center bg-red-800/50 text-red-300 text-sm border-t border-white/10 flex-shrink-0 z-10">
+            <footer className="p-2 text-center bg-red-800/50 text-red-300 text-sm border-t border-neutral-800 flex-shrink-0 z-10">
                 Error: {sessionError}
             </footer>
         )}

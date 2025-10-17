@@ -1,4 +1,5 @@
 
+
 import React from 'react';
 
 interface StatusIndicatorProps {
@@ -7,11 +8,11 @@ interface StatusIndicatorProps {
 }
 
 export const StatusIndicator: React.FC<StatusIndicatorProps> = ({ isConnected, isConnecting }) => {
-  let color = 'bg-gray-500';
+  let color = 'bg-red-500';
   let text = 'Desconectada';
 
   if (isConnecting) {
-    color = 'bg-yellow-500 animate-pulse';
+    color = 'bg-amber-500 animate-pulse';
     text = 'Conectando';
   } else if (isConnected) {
     color = 'bg-green-500';
