@@ -1,3 +1,4 @@
+
 import React, { Suspense, useEffect, useRef, useState } from 'react';
 // FIX: AnimationMixer and other 3D types are part of the 'three' library, not '@react-three/fiber'.
 // This resolves module export errors for AnimationMixer, AnimationAction, Bone, etc., and subsequent type errors.
@@ -35,6 +36,10 @@ declare global {
       path: React.SVGProps<SVGPathElement>;
       form: React.DetailedHTMLProps<React.FormHTMLAttributes<HTMLFormElement>, HTMLFormElement>;
       input: React.DetailedHTMLProps<React.InputHTMLAttributes<HTMLInputElement>, HTMLInputElement>;
+      // FIX: Manually add R3F elements that are not being picked up from ThreeElements to fix JSX errors.
+      primitive: ThreeElements['primitive'];
+      ambientLight: ThreeElements['ambientLight'];
+      directionalLight: ThreeElements['directionalLight'];
     }
   }
 }

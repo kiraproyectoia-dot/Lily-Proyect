@@ -1,5 +1,23 @@
+
 import React, { useRef, useEffect } from 'react';
 import { TranscriptEntry, TranscriptSource } from '../types';
+
+// FIX: Manually add standard HTML element types to the global JSX namespace
+// to resolve type errors caused by a misconfigured project setup.
+declare global {
+  namespace JSX {
+    interface IntrinsicElements {
+      div: React.DetailedHTMLProps<React.HTMLAttributes<HTMLDivElement>, HTMLDivElement>;
+      img: React.DetailedHTMLProps<React.ImgHTMLAttributes<HTMLImageElement>, HTMLImageElement>;
+      p: React.DetailedHTMLProps<React.HTMLAttributes<HTMLParagraphElement>, HTMLParagraphElement>;
+      h4: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHeadingElement>, HTMLHeadingElement>;
+      ul: React.DetailedHTMLProps<React.HTMLAttributes<HTMLUListElement>, HTMLUListElement>;
+      li: React.DetailedHTMLProps<React.LiHTMLAttributes<HTMLLIElement>, HTMLLIElement>;
+      a: React.DetailedHTMLProps<React.AnchorHTMLAttributes<HTMLAnchorElement>, HTMLAnchorElement>;
+      span: React.DetailedHTMLProps<React.HTMLAttributes<HTMLSpanElement>, HTMLSpanElement>;
+    }
+  }
+}
 
 interface TranscriptionDisplayProps {
   transcripts: TranscriptEntry[];
@@ -77,7 +95,9 @@ export const TranscriptionDisplay: React.FC<TranscriptionDisplayProps> = ({ tran
         }
     }, [transcripts, isReplying, isSpeaking]);
 
-    const showTypingIndicator = isReplying && !isSpeaking;
+    const lastTranscript = transcripts[transcripts.length - 1];
+    const isModelStreaming = lastTranscript?.source === TranscriptSource.MODEL && !lastTranscript.isFinal;
+    const showTypingIndicator = isReplying && !isSpeaking && !isModelStreaming;
 
     return (
         <div 

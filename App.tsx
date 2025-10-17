@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { useLiveSession } from './hooks/useLiveSession';
 import { Avatar } from './components/Avatar';
@@ -7,6 +8,31 @@ import { TranscriptionDisplay } from './components/TranscriptionDisplay';
 import { ChatInput } from './components/ChatInput'; 
 import { MemoryJournal } from './components/MemoryJournal';
 import { LILY_BACKGROUND_MEDIA_URL, TrashIcon } from './constants';
+
+// FIX: Manually adding standard HTML and SVG element types to the global JSX namespace.
+// The project's TypeScript configuration appears to be misconfigured, preventing it from
+// automatically recognizing standard JSX intrinsic elements. This resolves errors like
+// "Property 'video' does not exist on type 'JSX.IntrinsicElements'".
+declare global {
+  namespace JSX {
+    interface IntrinsicElements {
+      div: React.DetailedHTMLProps<React.HTMLAttributes<HTMLDivElement>, HTMLDivElement>;
+      header: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+      h1: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHeadingElement>, HTMLHeadingElement>;
+      h3: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHeadingElement>, HTMLHeadingElement>;
+      main: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+      footer: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+      button: React.DetailedHTMLProps<React.ButtonHTMLAttributes<HTMLButtonElement>, HTMLButtonElement>;
+      p: React.DetailedHTMLProps<React.HTMLAttributes<HTMLParagraphElement>, HTMLParagraphElement>;
+      span: React.DetailedHTMLProps<React.HTMLAttributes<HTMLSpanElement>, HTMLSpanElement>;
+      svg: React.SVGProps<SVGSVGElement>;
+      path: React.SVGProps<SVGPathElement>;
+      form: React.DetailedHTMLProps<React.FormHTMLAttributes<HTMLFormElement>, HTMLFormElement>;
+      input: React.DetailedHTMLProps<React.InputHTMLAttributes<HTMLInputElement>, HTMLInputElement>;
+      video: React.DetailedHTMLProps<React.VideoHTMLAttributes<HTMLVideoElement>, HTMLVideoElement>;
+    }
+  }
+}
 
 // The new static and reliable 3D avatar URL for Lily
 const LILY_AVATAR_URL = 'https://models.readyplayer.me/68e7ada78074ade6a70196db.glb';

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { getMemories, clearMemories } from '../utils/memory';
 
@@ -14,6 +15,8 @@ declare global {
       p: React.DetailedHTMLProps<React.HTMLAttributes<HTMLParagraphElement>, HTMLParagraphElement>;
       ul: React.DetailedHTMLProps<React.HTMLAttributes<HTMLUListElement>, HTMLUListElement>;
       li: React.DetailedHTMLProps<React.LiHTMLAttributes<HTMLLIElement>, HTMLLIElement>;
+      // FIX: Add 'style' element type to fix JSX error.
+      style: React.DetailedHTMLProps<React.StyleHTMLAttributes<HTMLStyleElement>, HTMLStyleElement>;
     }
   }
 }
