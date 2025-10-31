@@ -8,7 +8,8 @@ import { TranscriptionDisplay } from './components/TranscriptionDisplay';
 import { ChatInput } from './components/ChatInput'; 
 import { MemoryJournal } from './components/MemoryJournal';
 import { WelcomeGuide } from './components/WelcomeGuide';
-import { WelcomeBack } from './components/WelcomeBack'; // New component
+import { WelcomeBack } from './components/WelcomeBack';
+import { MediaPlayer } from './components/MediaPlayer'; // New component
 import { LILY_BACKGROUND_MEDIA_URL, TrashIcon } from './constants';
 
 // FIX: Manually adding standard HTML and SVG element types to the global JSX namespace.
@@ -36,6 +37,8 @@ declare global {
 const LILY_AVATAR_URL = 'https://models.readyplayer.me/68e7ada78074ade6a70196db.glb';
 
 const App: React.FC = () => {
+  const [mediaUrl, setMediaUrl] = useState<string | null>(null);
+
   const {
     isConnected,
     isConnecting,
@@ -52,7 +55,7 @@ const App: React.FC = () => {
     sendTextMessage,
     saveImageMemory,
     clearChatHistory,
-  } = useLiveSession();
+  } = useLiveSession({ onPlayMedia: setMediaUrl });
 
   const [isChatVisible, setIsChatVisible] = useState(false);
   const [isMemoryJournalVisible, setIsMemoryJournalVisible] = useState(false);
@@ -97,6 +100,7 @@ const App: React.FC = () => {
     <div className="relative text-white min-h-screen flex flex-col items-center justify-center p-4 font-sans">
       {showWelcome && <WelcomeGuide onClose={handleWelcomeClose} />}
       {showWelcomeBack && <WelcomeBack onClose={handleWelcomeBackClose} />}
+      {mediaUrl && <MediaPlayer url={mediaUrl} onClose={() => setMediaUrl(null)} />}
       
       <div className="relative w-full max-w-5xl h-[95vh] flex flex-col bg-neutral-900/70 rounded-2xl shadow-2xl backdrop-blur-lg border border-neutral-800 overflow-hidden">
         <header className="flex items-center justify-between p-4 border-b border-neutral-800 flex-shrink-0 z-10">
