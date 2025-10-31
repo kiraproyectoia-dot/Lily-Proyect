@@ -1,17 +1,9 @@
 
 import React, { Suspense, useEffect, useRef, useState } from 'react';
-// FIX: AnimationMixer and other 3D types are part of the 'three' library, not '@react-three/fiber'.
-// This resolves module export errors for AnimationMixer, AnimationAction, Bone, etc., and subsequent type errors.
-// FIX: Removed `type` keyword from `ThreeElements` import to ensure it's available for JSX global augmentation.
 import { Canvas, useFrame, ThreeElements } from '@react-three/fiber';
 import { AnimationMixer, AnimationAction, LoopOnce, Bone, SkinnedMesh, Vector2, Euler, MathUtils } from 'three';
 import { useGLTF, OrbitControls } from '@react-three/drei';
 
-// FIX: The project's TypeScript configuration has trouble resolving JSX types correctly.
-// To fix this, we'll use declaration merging. First, we extend IntrinsicElements
-// with ThreeElements for react-three-fiber components. Then, in a separate declaration,
-// we add the standard HTML elements that are missing. This two-step process
-// ensures both sets of components are correctly typed.
 declare global {
   namespace JSX {
     interface IntrinsicElements extends ThreeElements {}
@@ -21,9 +13,6 @@ declare global {
 declare global {
   namespace JSX {
     interface IntrinsicElements {
-      // FIX: Manually adding standard HTML and SVG elements because React's global JSX types
-      // are not being picked up correctly in this project's configuration. This resolves
-      // errors like "Property 'div' does not exist on type 'JSX.IntrinsicElements'".
       div: React.DetailedHTMLProps<React.HTMLAttributes<HTMLDivElement>, HTMLDivElement>;
       header: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
       h1: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHeadingElement>, HTMLHeadingElement>;
@@ -36,7 +25,6 @@ declare global {
       path: React.SVGProps<SVGPathElement>;
       form: React.DetailedHTMLProps<React.FormHTMLAttributes<HTMLFormElement>, HTMLFormElement>;
       input: React.DetailedHTMLProps<React.InputHTMLAttributes<HTMLInputElement>, HTMLInputElement>;
-      // FIX: Manually add R3F elements that are not being picked up from ThreeElements to fix JSX errors.
       primitive: ThreeElements['primitive'];
       ambientLight: ThreeElements['ambientLight'];
       directionalLight: ThreeElements['directionalLight'];
@@ -47,80 +35,82 @@ declare global {
 interface ModelProps {
   modelUrl: string;
   isSpeaking: boolean;
+  currentGesture: string | null;
 }
 
-// State for an individual morph target to make the system more robust
 interface MorphTargetInfo {
   mesh: SkinnedMesh;
   index: number;
 }
 
+// Maps simple gesture names from the prompt to potential animation clip names in the 3D model.
+// This might need adjustment if the model's animation names are different.
+const GESTURE_TO_ANIMATION_MAP: Record<string, string[]> = {
+    nod: ['nod', 'yes'],
+    shake: ['shake', 'no'],
+    thoughtful: ['lookaround', 'headtilt'],
+    idle_yawn: ['yawn'],
+    idle_hair: ['hair'],
+};
 
-const LilyModel: React.FC<ModelProps> = ({ modelUrl, isSpeaking }) => {
+const LilyModel: React.FC<ModelProps> = ({ modelUrl, isSpeaking, currentGesture }) => {
   const { scene, animations } = useGLTF(modelUrl);
-  // FIX: Explicitly initialize useRef with null. While useRef() with no arguments is valid, the project's brittle setup might cause issues with the no-argument overload. This provides an initial value, satisfying the error "Expected 1 arguments, but got 0".
   const mixer = useRef<AnimationMixer | null>(null);
 
-  // State for animations
   const [jawMorph, setJawMorph] = useState<MorphTargetInfo | null>(null);
   const [headBone, setHeadBone] = useState<Bone | null>(null);
   const [spineBone, setSpineBone] = useState<Bone | null>(null);
   const [leftEyeBone, setLeftEyeBone] = useState<Bone | null>(null);
   const [rightEyeBone, setRightEyeBone] = useState<Bone | null>(null);
-  const [idleAnimations, setIdleAnimations] = useState<AnimationAction[]>([]);
   
-  // Refs for animation state and initial bone positions
+  const animationsMap = useRef<Record<string, AnimationAction>>({});
+  const idleAnimations = useRef<AnimationAction[]>([]);
+  
   const eyeDartState = useRef({ nextTime: 3, target: new Vector2() });
   const idleAnimState = useRef({ nextTime: 15, isPlaying: false, currentAction: null as AnimationAction | null });
+  const gestureState = useRef({ isPlaying: false });
   const initialBoneRotations = useRef(new Map<string, Euler>());
 
-  // One-time setup for animations and scene traversal
   useEffect(() => {
     if (!scene || !animations) return;
     
-    // FIX: The AnimationMixer constructor requires the root object of the animation (the scene) as an argument.
-    // The constructor for AnimationMixer requires the scene object to animate.
-    // FIX: Pass the 'scene' object to the AnimationMixer constructor.
     mixer.current = new AnimationMixer(scene);
 
     const onAnimationFinished = (event: any) => {
-        if (idleAnimations.some(action => action.getClip().uuid === event.action.getClip().uuid)) {
+        const finishedAction = event.action;
+        if (idleAnimations.current.includes(finishedAction)) {
             idleAnimState.current.isPlaying = false;
+        }
+        if (Object.values(animationsMap.current).includes(finishedAction)) {
+            gestureState.current.isPlaying = false;
         }
     };
     mixer.current.addEventListener('finished', onAnimationFinished);
     
-    // Find and configure all potential idle animations
     const potentialIdleNames = ['hair', 'yawn', 'look', 'nod', 'shake', 'idle'];
-    const foundIdleAnimations = animations
-        .filter(clip => potentialIdleNames.some(name => clip.name.toLowerCase().includes(name)))
-        .map(clip => {
-            const action = mixer.current!.clipAction(clip);
-            // FIX: The setLoop method requires a second argument for the number of repetitions.
-            // For LoopOnce, this should be 1.
-            // FIX: Provide the required second argument (repetitions) to the setLoop method.
-            action.setLoop(LoopOnce, 1);
-            action.clampWhenFinished = true;
-            return action;
-        });
+    animations.forEach(clip => {
+        const action = mixer.current!.clipAction(clip);
+        action.setLoop(LoopOnce, 1);
+        action.clampWhenFinished = true;
+        animationsMap.current[clip.name] = action;
+        
+        if (potentialIdleNames.some(name => clip.name.toLowerCase().includes(name))) {
+            idleAnimations.current.push(action);
+        }
+    });
+    
+    console.log('AVATAR ALIVE: Available animation clips:', Object.keys(animationsMap.current));
 
-    if (foundIdleAnimations.length > 0) {
-        setIdleAnimations(foundIdleAnimations);
-        console.log(`AVATAR ALIVE: Success! Found ${foundIdleAnimations.length} idle animations.`, foundIdleAnimations.map(a => a.getClip().name));
+    if (idleAnimations.current.length > 0) {
+        console.log(`AVATAR ALIVE: Success! Found ${idleAnimations.current.length} idle animations.`);
     } else {
         console.warn("AVATAR ALIVE: Could not find any suitable idle animation clips in the model.");
     }
     
-    let jawFound = false;
-    let headFound = false;
-    let spineFound = false;
-    let leftEyeFound = false;
-    let rightEyeFound = false;
-    // Jaw open is for simple talking animation.
+    let jawFound = false, headFound = false, spineFound = false, leftEyeFound = false, rightEyeFound = false;
     const jawMorphNames = ['jawopen', 'mouthopen'];
 
     scene.traverse((node) => {
-       // --- Find Bones for Procedural Animation ---
        if (node instanceof Bone) {
         if (!initialBoneRotations.current.has(node.uuid)) {
             initialBoneRotations.current.set(node.uuid, node.rotation.clone());
@@ -132,11 +122,8 @@ const LilyModel: React.FC<ModelProps> = ({ modelUrl, isSpeaking }) => {
         if (!rightEyeFound && (nodeName.includes('righteye') || nodeName.includes('eye_r'))) { setRightEyeBone(node); rightEyeFound = true; }
       }
       
-      // --- Find Morph Targets for Facial Animation ---
       if (node instanceof SkinnedMesh && node.morphTargetDictionary) {
         const dictionary = node.morphTargetDictionary;
-        
-        // Find Jaw Morph Target (Lip-Sync)
         if (!jawFound) {
           const jawKey = Object.keys(dictionary).find(key => jawMorphNames.includes(key.toLowerCase()));
           if (jawKey) { setJawMorph({ mesh: node, index: dictionary[jawKey] }); jawFound = true; }
@@ -155,40 +142,46 @@ const LilyModel: React.FC<ModelProps> = ({ modelUrl, isSpeaking }) => {
     }
   }, [scene, animations]);
 
-  // Animate the avatar every frame.
+  useEffect(() => {
+    if (currentGesture && !gestureState.current.isPlaying) {
+      const possibleClipKeywords = GESTURE_TO_ANIMATION_MAP[currentGesture] || [currentGesture];
+      const animationNames = Object.keys(animationsMap.current);
+      
+      let foundClipName: string | undefined;
+      for (const keyword of possibleClipKeywords) {
+        foundClipName = animationNames.find(name => name.toLowerCase().includes(keyword));
+        if (foundClipName) break;
+      }
+
+      if (foundClipName) {
+        const action = animationsMap.current[foundClipName];
+        console.log(`Playing gesture: ${currentGesture} -> animation: ${foundClipName}`);
+        mixer.current?.stopAllAction(); // Stop idle animations to play the gesture
+        action.reset().play();
+        gestureState.current.isPlaying = true;
+        idleAnimState.current.isPlaying = false; // Ensure idle state knows a gesture is playing
+      } else {
+        console.warn(`Gesture '${currentGesture}' not found in animation map.`);
+      }
+    }
+  }, [currentGesture]);
+
+
   useFrame((state, delta) => {
     const t = state.clock.elapsedTime;
     mixer.current?.update(delta);
 
-    const isPlayingClipAnimation = idleAnimState.current.isPlaying;
+    const isPlayingClipAnimation = idleAnimState.current.isPlaying || gestureState.current.isPlaying;
 
-    // --- Dynamic Idle Animation Player (Non-Repeating) ---
-    if (idleAnimations.length > 0 && !isSpeaking && !isPlayingClipAnimation && t > idleAnimState.current.nextTime) {
+    if (idleAnimations.current.length > 0 && !isSpeaking && !isPlayingClipAnimation && t > idleAnimState.current.nextTime) {
         idleAnimState.current.isPlaying = true;
-        
-        let nextAction: AnimationAction;
-        const lastAction = idleAnimState.current.currentAction;
-
-        if (idleAnimations.length > 1 && lastAction) {
-            // Filter out the last played animation to avoid repetition
-            const possibleNextActions = idleAnimations.filter(
-                action => action.getClip().uuid !== lastAction.getClip().uuid
-            );
-            nextAction = possibleNextActions[Math.floor(Math.random() * possibleNextActions.length)];
-        } else {
-            // If it's the first time or there's only one animation, pick any
-            nextAction = idleAnimations[Math.floor(Math.random() * idleAnimations.length)];
-        }
-        
+        let nextAction: AnimationAction = idleAnimations.current[Math.floor(Math.random() * idleAnimations.current.length)];
         idleAnimState.current.currentAction = nextAction;
         nextAction.reset().play();
-        
-        // Schedule the next possible animation after this one finishes
         const duration = nextAction.getClip().duration;
-        idleAnimState.current.nextTime = t + duration + 10 + Math.random() * 10; // 10-20 sec wait
+        idleAnimState.current.nextTime = t + duration + 10 + Math.random() * 10;
     }
 
-    // --- Lip-Sync Logic ---
     if (jawMorph?.mesh?.morphTargetInfluences) {
         let targetInfluence = isSpeaking ? (0.3 + Math.sin(t * 20) * 0.4) : 0;
         jawMorph.mesh.morphTargetInfluences[jawMorph.index] = MathUtils.lerp(
@@ -198,16 +191,14 @@ const LilyModel: React.FC<ModelProps> = ({ modelUrl, isSpeaking }) => {
         );
     }
     
-    // --- Procedural Animations Coordination Flag ---
     const pauseProcedural = isSpeaking || isPlayingClipAnimation;
     
-    // --- Eye Darting (Procedural) ---
     if (leftEyeBone && rightEyeBone && !pauseProcedural) {
         if (t > eyeDartState.current.nextTime) {
             const x = (Math.random() - 0.5) * 0.25;
             const y = (Math.random() - 0.5) * 0.2;
             eyeDartState.current.target.set(x, y);
-            eyeDartState.current.nextTime = t + 1.5 + Math.random() * 4; // Dart every ~1.5-5.5s
+            eyeDartState.current.nextTime = t + 1.5 + Math.random() * 4;
         }
         const lerpFactor = delta * 5;
         leftEyeBone.rotation.y = MathUtils.lerp(leftEyeBone.rotation.y, eyeDartState.current.target.x, lerpFactor);
@@ -216,7 +207,6 @@ const LilyModel: React.FC<ModelProps> = ({ modelUrl, isSpeaking }) => {
         rightEyeBone.rotation.x = MathUtils.lerp(rightEyeBone.rotation.x, eyeDartState.current.target.y, lerpFactor);
     }
 
-    // --- Breathing Animation (Procedural) ---
     if (spineBone) {
         const initialRotation = initialBoneRotations.current.get(spineBone.uuid);
         if (initialRotation) {
@@ -225,24 +215,19 @@ const LilyModel: React.FC<ModelProps> = ({ modelUrl, isSpeaking }) => {
             const targetRotationX = pauseProcedural
                 ? initialRotation.x
                 : initialRotation.x + Math.sin(t * breathFrequency) * breathAmplitude;
-
             spineBone.rotation.x = MathUtils.lerp(spineBone.rotation.x, targetRotationX, delta * 1.5);
         }
     }
 
-    // --- Idle Head Sway (Procedural) ---
     if (headBone) {
         const initialRotation = initialBoneRotations.current.get(headBone.uuid);
         if (initialRotation) {
             const swayFrequency = 0.4;
             const swayAmplitude = 0.04;
-
             const targetSwayY = pauseProcedural
                 ? initialRotation.y : initialRotation.y + Math.sin(t * swayFrequency) * swayAmplitude;
-            
             const targetSwayX = pauseProcedural
                 ? initialRotation.x : initialRotation.x + Math.cos(t * swayFrequency * 0.7) * (swayAmplitude * 0.6);
-
             headBone.rotation.y = MathUtils.lerp(headBone.rotation.y, targetSwayY, delta * 0.7);
             headBone.rotation.x = MathUtils.lerp(headBone.rotation.x, targetSwayX, delta * 0.7);
         }
@@ -252,7 +237,7 @@ const LilyModel: React.FC<ModelProps> = ({ modelUrl, isSpeaking }) => {
   return <primitive object={scene} position={[0, -1.75, 0]} />;
 };
 
-export const Avatar: React.FC<ModelProps> = ({ modelUrl, isSpeaking }) => {
+export const Avatar: React.FC<ModelProps> = ({ modelUrl, isSpeaking, currentGesture }) => {
   return (
     <Canvas 
       camera={{ position: [0, 0, 1.2], fov: 50 }}
@@ -266,7 +251,7 @@ export const Avatar: React.FC<ModelProps> = ({ modelUrl, isSpeaking }) => {
         castShadow={true} 
       />
       <Suspense fallback={null}>
-        <LilyModel modelUrl={modelUrl} isSpeaking={isSpeaking} />
+        <LilyModel modelUrl={modelUrl} isSpeaking={isSpeaking} currentGesture={currentGesture} />
       </Suspense>
       <OrbitControls 
         target={[0, 0.1, 0]} // Target the head area

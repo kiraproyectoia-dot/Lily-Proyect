@@ -1,5 +1,6 @@
+
 import React from 'react';
-import { PowerIcon, MicOnIcon, MicOffIcon, LoadingIcon, ChatIcon, JournalIcon } from '../constants';
+import { PowerIcon, MicOnIcon, MicOffIcon, LoadingIcon, ChatIcon, JournalIcon, PauseIcon, PlayIcon } from '../constants';
 
 // FIX: Manually adding standard HTML and SVG element types to the global JSX namespace.
 // The project's TypeScript configuration appears to be misconfigured, preventing it from
@@ -29,43 +30,62 @@ interface ControlsProps {
   isConnected: boolean;
   isConnecting: boolean;
   isMuted: boolean;
+  isPaused: boolean;
   isChatVisible: boolean;
   isMemoryJournalVisible: boolean;
   onStart: () => void;
-  onStop: () => void;
+  onPauseToggle: () => void;
   onMuteToggle: () => void;
   onChatToggle: () => void;
   onMemoryJournalToggle: () => void;
-  onClearChat: () => void; // Prop remains for type safety but is unused
 }
 
 export const Controls: React.FC<ControlsProps> = ({
   isConnected,
   isConnecting,
   isMuted,
+  isPaused,
   isChatVisible,
   isMemoryJournalVisible,
   onStart,
-  onStop,
+  onPauseToggle,
   onMuteToggle,
   onChatToggle,
   onMemoryJournalToggle,
 }) => {
+
+    const renderMainButton = () => {
+        if (!isConnected) {
+            return (
+                <button
+                    onClick={onStart}
+                    disabled={isConnecting}
+                    className="flex items-center justify-center w-12 h-12 bg-neutral-800 text-white font-semibold rounded-full shadow-lg hover:bg-neutral-700 transform transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:scale-100 animate-glow"
+                    aria-label={isConnecting ? "Conectando" : "Iniciar sesión"}
+                >
+                    {isConnecting ? <LoadingIcon /> : <PowerIcon />}
+                </button>
+            );
+        }
+
+        return (
+            <button
+              onClick={onPauseToggle}
+              className={`w-12 h-12 flex items-center justify-center rounded-full shadow-lg transform transition-all duration-300 hover:scale-110 ${
+                isPaused ? 'bg-green-800 hover:bg-green-700' : 'bg-red-900 hover:bg-red-800'
+              }`}
+              aria-label={isPaused ? "Reanudar sesión" : "Pausar sesión"}
+            >
+              {isPaused ? <PlayIcon /> : <PauseIcon />}
+            </button>
+        );
+    };
+
+
   return (
     <div className="flex items-center justify-center space-x-2">
       {!isConnected ? (
-        <button
-          onClick={onStart}
-          disabled={isConnecting}
-          className="flex items-center justify-center w-12 h-12 bg-neutral-800 text-white font-semibold rounded-full shadow-lg hover:bg-neutral-700 transform transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:scale-100 animate-glow"
-          aria-label={isConnecting ? "Conectando" : "Iniciar sesión"}
-        >
-          {isConnecting ? (
-            <LoadingIcon />
-          ) : (
-            <PowerIcon />
-          )}
-        </button>
+        renderMainButton()
       ) : (
         <>
           <button
@@ -97,17 +117,11 @@ export const Controls: React.FC<ControlsProps> = ({
                 ? 'bg-amber-600 hover:bg-amber-500'
                 : 'bg-neutral-800 hover:bg-neutral-700'
             }`}
-            aria-label={isMuted ? "Activar micrófono" : "Silenciar micrófono"}
+            aria-label={isMuted ? "Activar sonido" : "Silenciar sonido"}
           >
             {isMuted ? <MicOffIcon /> : <MicOnIcon />}
           </button>
-          <button
-            onClick={onStop}
-            className="w-12 h-12 flex items-center justify-center bg-red-900 hover:bg-red-800 rounded-full shadow-lg transform transition-transform duration-300 hover:scale-110"
-            aria-label="Detener sesión"
-          >
-            <PowerIcon />
-          </button>
+          {renderMainButton()}
         </>
       )}
     </div>

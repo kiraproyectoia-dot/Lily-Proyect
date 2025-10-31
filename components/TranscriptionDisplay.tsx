@@ -1,6 +1,8 @@
 
+
 import React, { useRef, useEffect } from 'react';
 import { TranscriptEntry, TranscriptSource } from '../types';
+import { JournalIcon, MapPinIcon } from '../constants'; // Re-use journal icon for saving memory
 
 // FIX: Manually add standard HTML element types to the global JSX namespace
 // to resolve type errors caused by a misconfigured project setup.
@@ -15,6 +17,9 @@ declare global {
       li: React.DetailedHTMLProps<React.LiHTMLAttributes<HTMLLIElement>, HTMLLIElement>;
       a: React.DetailedHTMLProps<React.AnchorHTMLAttributes<HTMLAnchorElement>, HTMLAnchorElement>;
       span: React.DetailedHTMLProps<React.HTMLAttributes<HTMLSpanElement>, HTMLSpanElement>;
+      button: React.DetailedHTMLProps<React.ButtonHTMLAttributes<HTMLButtonElement>, HTMLButtonElement>;
+      svg: React.SVGProps<SVGSVGElement>;
+      path: React.SVGProps<SVGPathElement>;
     }
   }
 }
@@ -23,9 +28,10 @@ interface TranscriptionDisplayProps {
   transcripts: TranscriptEntry[];
   isReplying: boolean;
   isSpeaking: boolean;
+  saveImageMemory: (entry: TranscriptEntry) => void;
 }
 
-const TranscriptBubble: React.FC<{ entry: TranscriptEntry }> = ({ entry }) => {
+const TranscriptBubble: React.FC<{ entry: TranscriptEntry; onSaveMemory: (entry: TranscriptEntry) => void; }> = ({ entry, onSaveMemory }) => {
   const isUser = entry.source === TranscriptSource.USER;
   const bubbleClass = isUser
     ? 'bg-neutral-700/90 self-end'
@@ -38,7 +44,7 @@ const TranscriptBubble: React.FC<{ entry: TranscriptEntry }> = ({ entry }) => {
 
   return (
     <div
-      className={`max-w-xs sm:max-w-md md:max-w-lg p-3 rounded-2xl transition-all duration-300 shadow-md flex flex-col gap-2 ${bubbleClass} ${opacityClass}`}
+      className={`relative group max-w-xs sm:max-w-md md:max-w-lg p-3 rounded-2xl transition-all duration-300 shadow-md flex flex-col gap-2 ${bubbleClass} ${opacityClass}`}
     >
       {entry.attachment?.dataUrl && (
          <img src={entry.attachment.dataUrl} alt={entry.attachment.name} className="rounded-lg max-h-48 w-auto object-contain self-center" />
@@ -48,14 +54,26 @@ const TranscriptBubble: React.FC<{ entry: TranscriptEntry }> = ({ entry }) => {
       )}
       {entry.text && <p className="text-white text-sm sm:text-base whitespace-pre-wrap">{entry.text}</p>}
       
-      {/* Render search results */}
+      {isUser && entry.attachment && (
+        <button 
+          onClick={() => onSaveMemory(entry)}
+          className="absolute -left-2 -top-2 p-1.5 bg-purple-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-purple-500 shadow-lg"
+          aria-label="Guardar este recuerdo"
+          title="Guardar este recuerdo"
+        >
+          <JournalIcon />
+        </button>
+      )}
+
       {entry.searchResults && entry.searchResults.length > 0 && (
         <div className="mt-3 pt-3 border-t border-neutral-700/50">
           <h4 className="text-xs font-semibold text-purple-300 mb-2">Fuentes:</h4>
           <ul className="space-y-1.5">
             {entry.searchResults.map((result, index) => (
               <li key={index} className="flex items-center gap-2">
-                 <span className="text-purple-400/80">&#8226;</span>
+                 <span className="text-purple-400/80 flex-shrink-0">
+                    {result.type === 'maps' ? <MapPinIcon /> : <>&#8226;</>}
+                 </span>
                  <a
                   href={result.uri}
                   target="_blank"
@@ -86,7 +104,7 @@ const TypingIndicatorBubble: React.FC = () => (
     </div>
   );
 
-export const TranscriptionDisplay: React.FC<TranscriptionDisplayProps> = ({ transcripts, isReplying, isSpeaking }) => {
+export const TranscriptionDisplay: React.FC<TranscriptionDisplayProps> = ({ transcripts, isReplying, isSpeaking, saveImageMemory }) => {
     const scrollRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -111,9 +129,9 @@ export const TranscriptionDisplay: React.FC<TranscriptionDisplayProps> = ({ tran
                 </div>
             ) : (
                 <>
-                    {transcripts.map((entry, index) => (
-                        <div key={index} className="flex flex-col">
-                            <TranscriptBubble entry={entry} />
+                    {transcripts.map((entry) => (
+                        <div key={entry.id} className="flex flex-col">
+                            <TranscriptBubble entry={entry} onSaveMemory={saveImageMemory} />
                         </div>
                     ))}
                     {showTypingIndicator && (

@@ -6,6 +6,7 @@ export enum TranscriptSource {
 }
 
 export interface TranscriptEntry {
+  id: string; // Unique ID for each entry
   source: TranscriptSource;
   text: string;
   isFinal: boolean;
@@ -18,5 +19,20 @@ export interface TranscriptEntry {
   searchResults?: { // For Lily's web search results
     uri: string;
     title: string;
+    type: 'web' | 'maps';
   }[];
+}
+
+export enum MemoryType {
+  FACT = 'fact',
+  GOAL = 'goal',
+  IMAGE = 'image',
+}
+
+export interface Memory {
+  id: string;
+  text: string;
+  imageUrl?: string;
+  type: MemoryType;
+  timestamp: number;
 }

@@ -1,5 +1,5 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { SendIcon, AttachmentIcon } from '../constants';
 
 // FIX: Manually adding standard HTML element types to the global JSX namespace.
@@ -23,10 +23,34 @@ interface ChatInputProps {
     isReplying: boolean;
 }
 
+const placeholders = [
+    "Escribe un mensaje o adjunta un archivo...",
+    "Puedes pedirle a Lily que dibuje algo...",
+    "Prueba a decir: 'Busca las últimas noticias sobre el clima'",
+    "¿Sabías que Lily puede cantar? Pídele una canción.",
+  ];
+
 export const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isReplying }) => {
     const [text, setText] = useState('');
     const [attachment, setAttachment] = useState<{ dataUrl: string; name: string; type: string; } | null>(null);
+    const [placeholder, setPlaceholder] = useState(placeholders[0]);
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    useEffect(() => {
+        if (isReplying) {
+            setPlaceholder("Lily está pensando...");
+        } else {
+            setPlaceholder(placeholders[0]); // Reset to default when not replying
+            const interval = setInterval(() => {
+                setPlaceholder(currentPlaceholder => {
+                    const currentIndex = placeholders.indexOf(currentPlaceholder);
+                    const nextIndex = (currentIndex + 1) % placeholders.length;
+                    return placeholders[nextIndex];
+                });
+            }, 5000); // Change every 5 seconds
+            return () => clearInterval(interval);
+        }
+    }, [isReplying]);
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -88,7 +112,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isReplying 
                         type="text"
                         value={text}
                         onChange={(e) => setText(e.target.value)}
-                        placeholder={isReplying ? "Lily está pensando..." : "Escribe un mensaje o adjunta un archivo..."}
+                        placeholder={placeholder}
                         className="w-full bg-gray-900/50 border border-neutral-700 rounded-full py-2 pl-12 pr-12 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-400 transition-all"
                         autoComplete="off"
                         disabled={isReplying}

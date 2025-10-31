@@ -1,10 +1,12 @@
-const MEMORY_KEY = 'lily_memories_v1';
+import { Memory, MemoryType } from '../types';
+
+const MEMORY_KEY = 'lily_memories_v2'; // Bumped version for new structure
 
 /**
  * Retrieves all stored memories from localStorage.
- * @returns An array of memory strings.
+ * @returns An array of Memory objects.
  */
-export const getMemories = (): string[] => {
+export const getMemories = (): Memory[] => {
   try {
     const storedMemories = localStorage.getItem(MEMORY_KEY);
     return storedMemories ? JSON.parse(storedMemories) : [];
@@ -15,19 +17,56 @@ export const getMemories = (): string[] => {
 };
 
 /**
- * Adds a new memory to localStorage, avoiding duplicates.
- * @param memory - The memory string to add.
+ * Adds a new memory to localStorage.
+ * @param memoryData - The partial memory object to add.
  */
-export const addMemory = (memory: string): void => {
+export const addMemory = (memoryData: Partial<Omit<Memory, 'id' | 'timestamp'>> & { text: string }): void => {
   try {
     const currentMemories = getMemories();
-    // Avoid duplicates
-    if (!currentMemories.includes(memory)) {
-      const updatedMemories = [...currentMemories, memory];
-      localStorage.setItem(MEMORY_KEY, JSON.stringify(updatedMemories));
-    }
-  } catch (error) {
+    const newMemory: Memory = {
+      id: crypto.randomUUID(),
+      timestamp: Date.now(),
+      type: memoryData.type || MemoryType.FACT,
+      ...memoryData,
+    };
+    const updatedMemories = [...currentMemories, newMemory];
+    localStorage.setItem(MEMORY_KEY, JSON.stringify(updatedMemories));
+  } catch (error)
+    {
     console.error("Failed to add memory to localStorage", error);
+  }
+};
+
+/**
+ * Deletes a memory by its ID.
+ * @param id - The ID of the memory to delete.
+ */
+export const deleteMemory = (id: string): void => {
+  try {
+    const currentMemories = getMemories();
+    const updatedMemories = currentMemories.filter((mem) => mem.id !== id);
+    localStorage.setItem(MEMORY_KEY, JSON.stringify(updatedMemories));
+    }
+   catch (error) {
+    console.error("Failed to delete memory from localStorage", error);
+  }
+};
+
+/**
+ * Updates a memory's text by its ID.
+ * @param id - The ID of the memory to update.
+ * @param newText - The new text for the memory.
+ */
+export const updateMemory = (id: string, newText: string): void => {
+  try {
+    const currentMemories = getMemories();
+    const updatedMemories = currentMemories.map(mem =>
+      mem.id === id ? { ...mem, text: newText } : mem
+    );
+    localStorage.setItem(MEMORY_KEY, JSON.stringify(updatedMemories));
+    }
+   catch (error) {
+    console.error("Failed to update memory in localStorage", error);
   }
 };
 
