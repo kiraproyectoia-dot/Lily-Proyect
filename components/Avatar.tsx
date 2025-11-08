@@ -37,6 +37,7 @@ interface ModelProps {
   modelUrl: string;
   isSpeaking: boolean;
   currentGesture: string | null;
+  getAudioVolume?: () => number;
 }
 
 interface MorphTargetInfo {
@@ -52,7 +53,7 @@ const GESTURE_TO_ANIMATION_MAP: Record<string, string[]> = {
     idle_hair: ['hair'],
 };
 
-const LilyModel: React.FC<ModelProps> = ({ modelUrl, isSpeaking, currentGesture }) => {
+const LilyModel: React.FC<ModelProps> = ({ modelUrl, isSpeaking, currentGesture, getAudioVolume }) => {
   const { scene, animations } = useGLTF(modelUrl);
   const mixer = useRef<AnimationMixer | null>(null);
 
@@ -68,7 +69,13 @@ const LilyModel: React.FC<ModelProps> = ({ modelUrl, isSpeaking, currentGesture 
   const eyeDartState = useRef({ nextTime: 3, target: new Vector2() });
   const idleAnimState = useRef({ nextTime: 15, isPlaying: false, currentAction: null as AnimationAction | null });
   const gestureState = useRef({ isPlaying: false });
-  const speakingState = useRef({ currentViseme: 'viseme_sil', nextSwitchTime: 0 });
+  
+  const lipSyncState = useRef({
+      lastVisemeChangeTime: 0,
+      currentVisemeIndex: -1,
+      targetIntensity: 0,
+  });
+
   const initialBoneRotations = useRef(new Map<string, Euler>());
 
   useEffect(() => {
@@ -223,54 +230,79 @@ const LilyModel: React.FC<ModelProps> = ({ modelUrl, isSpeaking, currentGesture 
   }, [currentGesture]);
 
   useFrame((state, delta) => {
-    const t = state.clock.elapsedTime;
+    const now = state.clock.elapsedTime;
     mixer.current?.update(delta);
     
-    // --- REALISTIC LIP-SYNC ---
+    // --- LIP-SYNC (REFINED: NATURAL VISEMES & INTENSITY) ---
+    // A curated list of visemes that produce a more natural, less exaggerated mouth movement.
+    // This avoids visemes that can look like sneers or show too much teeth (e.g., 'viseme_E', 'viseme_I').
+    const SAFE_VISEME_NAMES = [
+        'viseme_aa', 'viseme_O', 'viseme_U', 'viseme_PP',
+        'viseme_RR', 'viseme_nn', 'viseme_CH', 'viseme_DD', 'viseme_kk'
+    ];
+    
     const visemeKeys = Object.keys(visemes);
     if (visemeKeys.length > 0) {
-        if (isSpeaking) {
-            if (t > speakingState.current.nextSwitchTime) {
-                const currentViseme = speakingState.current.currentViseme;
-                let nextViseme = currentViseme;
-                // Focus on more prominent, open-mouth visemes for a more dynamic look
-                const prominentVisemes = visemeKeys.filter(v => ['viseme_aa', 'viseme_E', 'viseme_I', 'viseme_O', 'viseme_U', 'viseme_FF', 'viseme_PP', 'viseme_RR'].includes(v));
+        let intensity = 0;
+        if (isSpeaking && getAudioVolume) {
+            const volume = getAudioVolume();
+            // Reduced the multiplier and adjusted the power curve for a more subtle animation.
+            intensity = Math.pow(volume, 0.8) * 0.9;
+        }
 
-                if (prominentVisemes.length > 0) {
-                    while (nextViseme === currentViseme) {
-                        nextViseme = prominentVisemes[Math.floor(Math.random() * prominentVisemes.length)];
+        lipSyncState.current.targetIntensity = MathUtils.lerp(
+            lipSyncState.current.targetIntensity,
+            Math.min(intensity, 1.0), // Clamp intensity
+            delta * 15.0 // Reactivity
+        );
+        
+        if (lipSyncState.current.targetIntensity > 0.1) {
+            const timeSinceLastVisemeChange = now - lipSyncState.current.lastVisemeChangeTime;
+            if (timeSinceLastVisemeChange > 0.09) {
+                // Filter to only use the 'safe' visemes for a more natural look.
+                const safeVisemeIndices = visemeKeys
+                    .map((key, index) => ({ key, index }))
+                    .filter(item => SAFE_VISEME_NAMES.includes(item.key))
+                    .map(item => item.index);
+
+                if (safeVisemeIndices.length > 0) {
+                    let newIndex = lipSyncState.current.currentVisemeIndex;
+                    while (newIndex === lipSyncState.current.currentVisemeIndex) {
+                        newIndex = safeVisemeIndices[Math.floor(Math.random() * safeVisemeIndices.length)];
                     }
+                    lipSyncState.current.currentVisemeIndex = newIndex;
                 }
-                speakingState.current.currentViseme = nextViseme;
-                speakingState.current.nextSwitchTime = t + 0.1 + Math.random() * 0.15; // Switch every 100-250ms
+                lipSyncState.current.lastVisemeChangeTime = now;
             }
         } else {
-            speakingState.current.currentViseme = 'viseme_sil'; // Transition to silent
+            lipSyncState.current.currentVisemeIndex = -1;
         }
-        
-        // Apply influences to all visemes
-        const targetIntensity = isSpeaking ? 0.7 + Math.random() * 0.3 : 0; // Randomize intensity for realism
-        visemeKeys.forEach(key => {
+
+        visemeKeys.forEach((key, index) => {
             const visemeInfo = visemes[key];
-            const influence = visemeInfo.mesh.morphTargetInfluences![visemeInfo.index];
-            const target = (key === speakingState.current.currentViseme) ? targetIntensity : 0;
-            
-            visemeInfo.mesh.morphTargetInfluences![visemeInfo.index] = MathUtils.lerp(
-                influence, target, delta * 25 // Fast response
-            );
+            if (visemeInfo.mesh.morphTargetInfluences) {
+                const influence = visemeInfo.mesh.morphTargetInfluences[visemeInfo.index];
+                const isCurrentViseme = index === lipSyncState.current.currentVisemeIndex;
+                
+                const target = isCurrentViseme ? lipSyncState.current.targetIntensity : 0;
+                
+                const newInfluence = MathUtils.lerp(influence, target, delta * 25);
+                visemeInfo.mesh.morphTargetInfluences[visemeInfo.index] = newInfluence;
+            }
         });
     }
+
 
     const isPlayingClipAnimation = idleAnimState.current.isPlaying || gestureState.current.isPlaying;
     const pauseProcedural = isSpeaking || isPlayingClipAnimation;
 
-    if (idleAnimations.current.length > 0 && !isSpeaking && !isPlayingClipAnimation && t > idleAnimState.current.nextTime) {
+    if (idleAnimations.current.length > 0 && !isSpeaking && !isPlayingClipAnimation && now > idleAnimState.current.nextTime) {
         idleAnimState.current.isPlaying = true;
         let nextAction: AnimationAction = idleAnimations.current[Math.floor(Math.random() * idleAnimations.current.length)];
         idleAnimState.current.currentAction = nextAction;
         nextAction.reset().play();
         const duration = nextAction.getClip().duration;
-        idleAnimState.current.nextTime = t + duration + 10 + Math.random() * 10;
+        idleAnimState.current.nextTime = now + duration + 10 + Math.random() * 10;
     }
     
     if (leftEyeBone && rightEyeBone) {
@@ -286,11 +318,11 @@ const LilyModel: React.FC<ModelProps> = ({ modelUrl, isSpeaking, currentGesture 
                 rightEyeBone.rotation.y = MathUtils.lerp(rightEyeBone.rotation.y, initialRight.y, lerpFactor);
                 rightEyeBone.rotation.z = MathUtils.lerp(rightEyeBone.rotation.z, initialRight.z, lerpFactor);
             } else {
-                if (t > eyeDartState.current.nextTime) {
+                if (now > eyeDartState.current.nextTime) {
                     const x = (Math.random() - 0.5) * 0.25;
                     const y = (Math.random() - 0.5) * 0.2;
                     eyeDartState.current.target.set(x, y);
-                    eyeDartState.current.nextTime = t + 1.5 + Math.random() * 4;
+                    eyeDartState.current.nextTime = now + 1.5 + Math.random() * 4;
                 }
                 leftEyeBone.rotation.y = MathUtils.lerp(leftEyeBone.rotation.y, eyeDartState.current.target.x, lerpFactor);
                 leftEyeBone.rotation.x = MathUtils.lerp(leftEyeBone.rotation.x, eyeDartState.current.target.y, lerpFactor);
@@ -313,7 +345,7 @@ const LilyModel: React.FC<ModelProps> = ({ modelUrl, isSpeaking, currentGesture 
             } else {
                 const breathFrequency = 0.6;
                 const breathAmplitude = 0.015;
-                const targetRotationX = initialRotation.x + Math.sin(t * breathFrequency) * breathAmplitude;
+                const targetRotationX = initialRotation.x + Math.sin(now * breathFrequency) * breathAmplitude;
                 spineBone.rotation.x = MathUtils.lerp(spineBone.rotation.x, targetRotationX, lerpFactor);
                 spineBone.rotation.y = MathUtils.lerp(spineBone.rotation.y, initialRotation.y, lerpFactor);
                 spineBone.rotation.z = MathUtils.lerp(spineBone.rotation.z, initialRotation.z, lerpFactor);
@@ -332,8 +364,8 @@ const LilyModel: React.FC<ModelProps> = ({ modelUrl, isSpeaking, currentGesture 
             } else {
                 const swayFrequency = 0.4;
                 const swayAmplitude = 0.04;
-                const targetSwayY = initialRotation.y + Math.sin(t * swayFrequency) * swayAmplitude;
-                const targetSwayX = initialRotation.x + Math.cos(t * swayFrequency * 0.7) * (swayAmplitude * 0.6);
+                const targetSwayY = initialRotation.y + Math.sin(now * swayFrequency) * swayAmplitude;
+                const targetSwayX = initialRotation.x + Math.cos(now * swayFrequency * 0.7) * (swayAmplitude * 0.6);
                 headBone.rotation.y = MathUtils.lerp(headBone.rotation.y, targetSwayY, lerpFactor);
                 headBone.rotation.x = MathUtils.lerp(headBone.rotation.x, targetSwayX, lerpFactor);
                 headBone.rotation.z = MathUtils.lerp(headBone.rotation.z, initialRotation.z, lerpFactor);
@@ -345,7 +377,7 @@ const LilyModel: React.FC<ModelProps> = ({ modelUrl, isSpeaking, currentGesture 
   return <primitive object={scene} position={[0, -1.75, 0]} />;
 };
 
-export const Avatar: React.FC<ModelProps> = ({ modelUrl, isSpeaking, currentGesture }) => {
+export const Avatar: React.FC<ModelProps> = ({ modelUrl, isSpeaking, currentGesture, getAudioVolume }) => {
   return (
     <Canvas 
       camera={{ position: [0, 0, 1.2], fov: 50 }}
@@ -359,7 +391,7 @@ export const Avatar: React.FC<ModelProps> = ({ modelUrl, isSpeaking, currentGest
         castShadow={true} 
       />
       <Suspense fallback={null}>
-        <LilyModel modelUrl={modelUrl} isSpeaking={isSpeaking} currentGesture={currentGesture} />
+        <LilyModel modelUrl={modelUrl} isSpeaking={isSpeaking} currentGesture={currentGesture} getAudioVolume={getAudioVolume} />
       </Suspense>
       <OrbitControls 
         target={[0, 0.1, 0]} // Target the head area

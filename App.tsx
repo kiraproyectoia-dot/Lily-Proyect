@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useRef } from 'react';
 import { useLiveSession } from './hooks/useLiveSession';
 import { Avatar } from './components/Avatar';
@@ -56,6 +57,7 @@ const App: React.FC = () => {
     sendTextMessage,
     saveImageMemory,
     clearChatHistory,
+    getAudioVolume,
   } = useLiveSession({ onPlayMedia: setMediaUrl });
 
   const [isChatVisible, setIsChatVisible] = useState(false);
@@ -138,6 +140,7 @@ const App: React.FC = () => {
               modelUrl={LILY_AVATAR_URL}
               isSpeaking={isSpeaking}
               currentGesture={currentGesture}
+              getAudioVolume={getAudioVolume}
             />
           </div>
           
