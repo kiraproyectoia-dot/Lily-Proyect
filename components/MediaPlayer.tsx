@@ -1,5 +1,6 @@
 
 
+
 import React from 'react';
 
 declare global {
@@ -44,6 +45,12 @@ const createEmbedUrl = (url: string): string | null => {
             }
         }
 
+        // Apple Music
+        if (parsedUrl.hostname === 'music.apple.com' && parsedUrl.pathname.includes('/album/')) {
+            const embedUrl = `https://embed.music.apple.com${parsedUrl.pathname}${parsedUrl.search}`;
+            return embedUrl;
+        }
+
     } catch (e) {
         console.error("Invalid URL provided to createEmbedUrl:", url, e);
         return null;
@@ -61,8 +68,8 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({ url, onClose }) => {
     return null;
   }
 
-  const isSpotify = embedUrl.includes('spotify.com');
-  const containerClasses = `bg-neutral-900 rounded-lg shadow-xl w-full border border-neutral-700 flex flex-col relative ${isSpotify ? 'max-w-md h-[352px]' : 'max-w-2xl aspect-video'}`;
+  const isMusicPlayer = embedUrl.includes('spotify.com') || embedUrl.includes('music.apple.com');
+  const containerClasses = `bg-neutral-900 rounded-lg shadow-xl w-full border border-neutral-700 flex flex-col relative ${isMusicPlayer ? 'max-w-md h-[152px]' : 'max-w-2xl aspect-video'}`;
 
   return (
     <div 
@@ -82,7 +89,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({ url, onClose }) => {
         </button>
         <iframe
           width="100%"
-          height={isSpotify ? "352" : "100%"}
+          height={isMusicPlayer ? "152" : "100%"}
           src={embedUrl}
           title="Reproductor de medios"
           frameBorder="0"

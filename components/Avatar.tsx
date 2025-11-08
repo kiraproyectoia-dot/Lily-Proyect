@@ -1,19 +1,26 @@
 
 
+
+
+
+
 import React, { Suspense, useEffect, useRef, useState } from 'react';
 import { Canvas, useFrame, ThreeElements } from '@react-three/fiber';
 import { AnimationMixer, AnimationAction, LoopOnce, Bone, SkinnedMesh, Vector2, Euler, MathUtils } from 'three';
 import { useGLTF, OrbitControls } from '@react-three/drei';
 
+// FIX: Consolidate and correct JSX type declarations. The previous dual `declare global`
+// blocks were causing conflicts by redefining `IntrinsicElements` instead of augmenting it.
+// This unified declaration extends react-three-fiber's `ThreeElements` to include all 3D
+// object types (`primitive`, `ambientLight`, etc.) and also manually adds standard
+// HTML elements to fix project-wide TypeScript configuration issues.
 declare global {
   namespace JSX {
-    interface IntrinsicElements extends ThreeElements {}
-  }
-}
-
-declare global {
-  namespace JSX {
-    interface IntrinsicElements {
+    interface IntrinsicElements extends ThreeElements {
+      // FIX: Manually add R3F elements that are causing errors due to project-wide type conflicts.
+      primitive: ThreeElements['primitive'];
+      ambientLight: ThreeElements['ambientLight'];
+      directionalLight: ThreeElements['directionalLight'];
       div: React.DetailedHTMLProps<React.HTMLAttributes<HTMLDivElement>, HTMLDivElement>;
       header: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
       h1: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHeadingElement>, HTMLHeadingElement>;
@@ -26,9 +33,6 @@ declare global {
       path: React.SVGProps<SVGPathElement>;
       form: React.DetailedHTMLProps<React.FormHTMLAttributes<HTMLFormElement>, HTMLFormElement>;
       input: React.DetailedHTMLProps<React.InputHTMLAttributes<HTMLInputElement>, HTMLInputElement>;
-      primitive: ThreeElements['primitive'];
-      ambientLight: ThreeElements['ambientLight'];
-      directionalLight: ThreeElements['directionalLight'];
     }
   }
 }

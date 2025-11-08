@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect, useRef } from 'react';
 import { useLiveSession } from './hooks/useLiveSession';
 import { Avatar } from './components/Avatar';
@@ -10,8 +8,8 @@ import { ChatInput } from './components/ChatInput';
 import { MemoryJournal } from './components/MemoryJournal';
 import { WelcomeGuide } from './components/WelcomeGuide';
 import { WelcomeBack } from './components/WelcomeBack';
-import { MediaPlayer } from './components/MediaPlayer';
 import { LILY_BACKGROUND_MEDIA_URL, TrashIcon } from './constants';
+import { MediaPlayer } from './components/MediaPlayer';
 
 // FIX: Manually adding standard HTML and SVG element types to the global JSX namespace.
 declare global {
@@ -38,8 +36,6 @@ declare global {
 const LILY_AVATAR_URL = 'https://models.readyplayer.me/68e7ada78074ade6a70196db.glb?morphTargets=ARKit,Oculus%20Visemes';
 
 const App: React.FC = () => {
-  const [mediaUrl, setMediaUrl] = useState<string | null>(null);
-
   const {
     isConnected,
     isConnecting,
@@ -58,12 +54,35 @@ const App: React.FC = () => {
     saveImageMemory,
     clearChatHistory,
     getAudioVolume,
-  } = useLiveSession({ onPlayMedia: setMediaUrl });
+  } = useLiveSession();
 
   const [isChatVisible, setIsChatVisible] = useState(false);
   const [isMemoryJournalVisible, setIsMemoryJournalVisible] = useState(false);
   const [showWelcome, setShowWelcome] = useState(false);
   const [showWelcomeBack, setShowWelcomeBack] = useState(false);
+  const [mediaUrl, setMediaUrl] = useState<string | null>(null);
+  const lastShownMediaUrl = useRef<string | null>(null);
+
+  // Effect to automatically play media links from Lily's responses
+  useEffect(() => {
+    if (isChatVisible) {
+        const lastTranscript = transcripts[transcripts.length - 1];
+        if (lastTranscript && lastTranscript.source === 'model' && lastTranscript.isFinal) {
+            const urlRegex = /(\b(https?):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%=~_|])/ig;
+            const match = lastTranscript.text.match(urlRegex);
+            
+            if (match) {
+                const url = match[0];
+                const isSupported = url.includes('youtube.com') || url.includes('youtu.be') || url.includes('spotify.com') || url.includes('music.apple.com');
+                
+                if (isSupported && url !== lastShownMediaUrl.current) {
+                    setMediaUrl(url);
+                    lastShownMediaUrl.current = url;
+                }
+            }
+        }
+    }
+  }, [transcripts, isChatVisible]);
 
   useEffect(() => {
     // Welcome Guide for first-time users
@@ -103,7 +122,6 @@ const App: React.FC = () => {
     <div className="relative text-white min-h-screen flex flex-col items-center justify-center p-4 font-sans">
       {showWelcome && <WelcomeGuide onClose={handleWelcomeClose} />}
       {showWelcomeBack && <WelcomeBack onClose={handleWelcomeBackClose} />}
-      {mediaUrl && <MediaPlayer url={mediaUrl} onClose={() => setMediaUrl(null)} />}
       
       <div className="relative w-full max-w-5xl h-[95vh] flex flex-col bg-neutral-900/70 rounded-2xl shadow-2xl backdrop-blur-lg border border-neutral-800 overflow-hidden">
         <header className="flex items-center justify-between p-4 border-b border-neutral-800 flex-shrink-0 z-10">
@@ -163,6 +181,7 @@ const App: React.FC = () => {
         </main>
 
         {isMemoryJournalVisible && <MemoryJournal onClose={toggleMemoryJournalVisibility} />}
+        {mediaUrl && <MediaPlayer url={mediaUrl} onClose={() => setMediaUrl(null)} />}
 
         {sessionError && (
             <footer className="p-2 text-center text-sm bg-red-900/50 border-t border-red-700/50">
