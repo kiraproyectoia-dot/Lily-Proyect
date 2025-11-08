@@ -31,6 +31,7 @@ interface ControlsProps {
   isConnecting: boolean;
   isMuted: boolean;
   isPaused: boolean;
+  isListening: boolean;
   isChatVisible: boolean;
   isMemoryJournalVisible: boolean;
   onStart: () => void;
@@ -45,6 +46,7 @@ export const Controls: React.FC<ControlsProps> = ({
   isConnecting,
   isMuted,
   isPaused,
+  isListening,
   isChatVisible,
   isMemoryJournalVisible,
   onStart,
@@ -73,7 +75,7 @@ export const Controls: React.FC<ControlsProps> = ({
               onClick={onPauseToggle}
               className={`w-12 h-12 flex items-center justify-center rounded-full shadow-lg transform transition-all duration-300 hover:scale-110 ${
                 isPaused ? 'bg-green-800 hover:bg-green-700' : 'bg-red-900 hover:bg-red-800'
-              }`}
+              } ${isListening ? 'animate-listening-glow' : ''}`}
               aria-label={isPaused ? "Reanudar sesión" : "Pausar sesión"}
             >
               {isPaused ? <PlayIcon /> : <PauseIcon />}

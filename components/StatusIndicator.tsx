@@ -5,13 +5,17 @@ import React from 'react';
 interface StatusIndicatorProps {
   isConnected: boolean;
   isConnecting: boolean;
+  isReconnecting: boolean;
 }
 
-export const StatusIndicator: React.FC<StatusIndicatorProps> = ({ isConnected, isConnecting }) => {
+export const StatusIndicator: React.FC<StatusIndicatorProps> = ({ isConnected, isConnecting, isReconnecting }) => {
   let color = 'bg-red-500';
   let text = 'Desconectada';
 
-  if (isConnecting) {
+  if (isReconnecting) {
+    color = 'bg-amber-500 animate-pulse';
+    text = 'Reconectando';
+  } else if (isConnecting) {
     color = 'bg-amber-500 animate-pulse';
     text = 'Conectando';
   } else if (isConnected) {

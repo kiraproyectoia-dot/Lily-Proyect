@@ -39,6 +39,7 @@ const App: React.FC = () => {
   const {
     isConnected,
     isConnecting,
+    isReconnecting,
     isMuted,
     isSpeaking,
     isReplying,
@@ -118,6 +119,8 @@ const App: React.FC = () => {
   const toggleChatVisibility = () => setIsChatVisible(prev => !prev);
   const toggleMemoryJournalVisibility = () => setIsMemoryJournalVisible(prev => !prev);
 
+  const isListening = isConnected && !isPaused;
+
   return (
     <div className="relative text-white min-h-screen flex flex-col items-center justify-center p-4 font-sans">
       {showWelcome && <WelcomeGuide onClose={handleWelcomeClose} />}
@@ -129,12 +132,13 @@ const App: React.FC = () => {
             Lily
           </h1>
           <div className="flex items-center space-x-4">
-            <StatusIndicator isConnected={isConnected} isConnecting={isConnecting} />
+            <StatusIndicator isConnected={isConnected} isConnecting={isConnecting} isReconnecting={isReconnecting} />
             <Controls
               isConnected={isConnected}
               isConnecting={isConnecting}
               isMuted={isMuted}
               isPaused={isPaused}
+              isListening={isListening}
               onStart={startSession}
               onPauseToggle={togglePause}
               onMuteToggle={toggleMute}
