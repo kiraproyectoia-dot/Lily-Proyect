@@ -1,4 +1,8 @@
+
 import React, { useState, useEffect, useRef } from 'react';
+// FIX: Import ThreeElements for use in the global JSX namespace declaration.
+// This is necessary to make TypeScript aware of the custom elements used by react-three-fiber.
+import type { ThreeElements } from '@react-three/fiber';
 import { useLiveSession } from './hooks/useLiveSession';
 import { Avatar } from './components/Avatar';
 import { Controls } from './components/Controls';
@@ -11,24 +15,39 @@ import { WelcomeBack } from './components/WelcomeBack';
 import { LILY_BACKGROUND_MEDIA_URL, TrashIcon } from './constants';
 import { MediaPlayer } from './components/MediaPlayer';
 
-// FIX: Manually adding standard HTML and SVG element types to the global JSX namespace.
+// FIX: Consolidated all global JSX intrinsic element definitions into this single, project-wide declaration.
+// This resolves conflicts caused by multiple, incomplete declarations across different files.
+// It now includes all standard HTML/SVG elements used in the app and extends react-three-fiber's `ThreeElements`
+// to support custom elements like `<primitive>`, `<ambientLight>`, etc., in the Avatar component.
 declare global {
   namespace JSX {
-    interface IntrinsicElements {
-      div: React.DetailedHTMLProps<React.HTMLAttributes<HTMLDivElement>, HTMLDivElement>;
-      header: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
-      h1: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHeadingElement>, HTMLHeadingElement>;
-      h3: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHeadingElement>, HTMLHeadingElement>;
-      main: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
-      footer: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+    interface IntrinsicElements extends ThreeElements {
+      // HTML Elements
+      a: React.DetailedHTMLProps<React.AnchorHTMLAttributes<HTMLAnchorElement>, HTMLAnchorElement>;
       button: React.DetailedHTMLProps<React.ButtonHTMLAttributes<HTMLButtonElement>, HTMLButtonElement>;
+      div: React.DetailedHTMLProps<React.HTMLAttributes<HTMLDivElement>, HTMLDivElement>;
+      footer: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+      form: React.DetailedHTMLProps<React.FormHTMLAttributes<HTMLFormElement>, HTMLFormElement>;
+      h1: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHeadingElement>, HTMLHeadingElement>;
+      h2: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHeadingElement>, HTMLHeadingElement>;
+      h3: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHeadingElement>, HTMLHeadingElement>;
+      h4: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHeadingElement>, HTMLHeadingElement>;
+      header: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+      iframe: React.DetailedHTMLProps<React.IframeHTMLAttributes<HTMLIFrameElement>, HTMLIFrameElement>;
+      img: React.DetailedHTMLProps<React.ImgHTMLAttributes<HTMLImageElement>, HTMLImageElement>;
+      input: React.DetailedHTMLProps<React.InputHTMLAttributes<HTMLInputElement>, HTMLInputElement>;
+      li: React.DetailedHTMLProps<React.LiHTMLAttributes<HTMLLIElement>, HTMLLIElement>;
+      main: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
       p: React.DetailedHTMLProps<React.HTMLAttributes<HTMLParagraphElement>, HTMLParagraphElement>;
       span: React.DetailedHTMLProps<React.HTMLAttributes<HTMLSpanElement>, HTMLSpanElement>;
+      strong: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+      style: React.DetailedHTMLProps<React.StyleHTMLAttributes<HTMLStyleElement>, HTMLStyleElement>;
+      ul: React.DetailedHTMLProps<React.HTMLAttributes<HTMLUListElement>, HTMLUListElement>;
+      video: React.DetailedHTMLProps<React.VideoHTMLAttributes<HTMLVideoElement>, HTMLVideoElement>;
+      // SVG Elements
       svg: React.SVGProps<SVGSVGElement>;
       path: React.SVGProps<SVGPathElement>;
-      form: React.DetailedHTMLProps<React.FormHTMLAttributes<HTMLFormElement>, HTMLFormElement>;
-      input: React.DetailedHTMLProps<React.InputHTMLAttributes<HTMLInputElement>, HTMLInputElement>;
-      video: React.DetailedHTMLProps<React.VideoHTMLAttributes<HTMLVideoElement>, HTMLVideoElement>;
+      circle: React.SVGProps<SVGCircleElement>;
     }
   }
 }

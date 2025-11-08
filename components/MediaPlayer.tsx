@@ -1,18 +1,9 @@
 
 
-
 import React from 'react';
 
-declare global {
-  namespace JSX {
-    interface IntrinsicElements {
-      div: React.DetailedHTMLProps<React.HTMLAttributes<HTMLDivElement>, HTMLDivElement>;
-      button: React.DetailedHTMLProps<React.ButtonHTMLAttributes<HTMLButtonElement>, HTMLButtonElement>;
-      iframe: React.DetailedHTMLProps<React.IframeHTMLAttributes<HTMLIFrameElement>, HTMLIFrameElement>;
-      style: React.DetailedHTMLProps<React.StyleHTMLAttributes<HTMLStyleElement>, HTMLStyleElement>;
-    }
-  }
-}
+// FIX: Removed the local JSX type declaration. A single, consolidated declaration
+// has been moved to the root App.tsx component to resolve project-wide type conflicts.
 
 interface MediaPlayerProps {
   url: string;

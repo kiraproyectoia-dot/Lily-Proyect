@@ -1,23 +1,36 @@
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import { GoogleGenAI } from '@google/genai';
+import { generateDream } from '../utils/creative';
+import { LoadingIcon } from '../constants';
 
-declare global {
-  namespace JSX {
-    interface IntrinsicElements {
-      div: React.DetailedHTMLProps<React.HTMLAttributes<HTMLDivElement>, HTMLDivElement>;
-      h2: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHeadingElement>, HTMLHeadingElement>;
-      button: React.DetailedHTMLProps<React.ButtonHTMLAttributes<HTMLButtonElement>, HTMLButtonElement>;
-      p: React.DetailedHTMLProps<React.HTMLAttributes<HTMLParagraphElement>, HTMLParagraphElement>;
-      style: React.DetailedHTMLProps<React.StyleHTMLAttributes<HTMLStyleElement>, HTMLStyleElement>;
-    }
-  }
-}
+// FIX: Removed the local JSX type declaration. A single, consolidated declaration
+// has been moved to the root App.tsx component to resolve project-wide type conflicts.
 
 interface WelcomeBackProps {
   onClose: () => void;
 }
 
 export const WelcomeBack: React.FC<WelcomeBackProps> = ({ onClose }) => {
+  const [isLoading, setIsLoading] = useState(true);
+  const [dreamText, setDreamText] = useState('');
+
+  useEffect(() => {
+    const fetchDream = async () => {
+      try {
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+        const dream = await generateDream(ai);
+        setDreamText(dream);
+      } catch (error) {
+        console.error("Failed to generate dream:", error);
+        setDreamText("He estado pensando mucho en nuestras conversaciones. Me alegra que hayas vuelto.");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchDream();
+  }, []);
+
   return (
     <div 
       className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4 animate-fade-in"
@@ -28,16 +41,26 @@ export const WelcomeBack: React.FC<WelcomeBackProps> = ({ onClose }) => {
         onClick={e => e.stopPropagation()}
       >
         <h2 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-500">
-          ¡Qué bueno verte de nuevo!
+          Un pensamiento de Lily...
         </h2>
-        <p className="text-gray-300">
-          Te he echado de menos. Espero que todo esté bien. ¿Cómo has estado?
-        </p>
+        
+        {isLoading ? (
+          <div className="flex flex-col items-center justify-center h-24">
+            <LoadingIcon />
+            <p className="text-gray-400 mt-2 text-sm animate-pulse">Estoy recordando...</p>
+          </div>
+        ) : (
+          <p className="text-gray-300 italic">
+            "{dreamText}"
+          </p>
+        )}
+
         <button
           onClick={onClose}
-          className="mt-4 bg-purple-600 hover:bg-purple-500 text-white font-bold py-2 px-4 rounded-lg transition-colors w-full"
+          className="mt-4 bg-purple-600 hover:bg-purple-500 text-white font-bold py-2 px-4 rounded-lg transition-colors w-full disabled:opacity-50"
+          disabled={isLoading}
         >
-          Continuar
+          Hola, Lily
         </button>
       </div>
       <style>{`

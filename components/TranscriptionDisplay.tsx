@@ -4,25 +4,8 @@ import React, { useRef, useEffect } from 'react';
 import { TranscriptEntry, TranscriptSource } from '../types';
 import { JournalIcon, MapPinIcon } from '../constants'; // Re-use journal icon for saving memory
 
-// FIX: Manually add standard HTML element types to the global JSX namespace
-// to resolve type errors caused by a misconfigured project setup.
-declare global {
-  namespace JSX {
-    interface IntrinsicElements {
-      div: React.DetailedHTMLProps<React.HTMLAttributes<HTMLDivElement>, HTMLDivElement>;
-      img: React.DetailedHTMLProps<React.ImgHTMLAttributes<HTMLImageElement>, HTMLImageElement>;
-      p: React.DetailedHTMLProps<React.HTMLAttributes<HTMLParagraphElement>, HTMLParagraphElement>;
-      h4: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHeadingElement>, HTMLHeadingElement>;
-      ul: React.DetailedHTMLProps<React.HTMLAttributes<HTMLUListElement>, HTMLUListElement>;
-      li: React.DetailedHTMLProps<React.LiHTMLAttributes<HTMLLIElement>, HTMLLIElement>;
-      a: React.DetailedHTMLProps<React.AnchorHTMLAttributes<HTMLAnchorElement>, HTMLAnchorElement>;
-      span: React.DetailedHTMLProps<React.HTMLAttributes<HTMLSpanElement>, HTMLSpanElement>;
-      button: React.DetailedHTMLProps<React.ButtonHTMLAttributes<HTMLButtonElement>, HTMLButtonElement>;
-      svg: React.SVGProps<SVGSVGElement>;
-      path: React.SVGProps<SVGPathElement>;
-    }
-  }
-}
+// FIX: Removed the local JSX type declaration. A single, consolidated declaration
+// has been moved to the root App.tsx component to resolve project-wide type conflicts.
 
 interface TranscriptionDisplayProps {
   transcripts: TranscriptEntry[];

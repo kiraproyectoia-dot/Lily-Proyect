@@ -1,39 +1,12 @@
 
-
-
-
-
-
 import React, { Suspense, useEffect, useRef, useState } from 'react';
 import { Canvas, useFrame, ThreeElements } from '@react-three/fiber';
 import { AnimationMixer, AnimationAction, LoopOnce, Bone, SkinnedMesh, Vector2, Euler, MathUtils } from 'three';
 import { useGLTF, OrbitControls } from '@react-three/drei';
 
-// FIX: Corrected the global JSX type declarations. This project has multiple files
-// redefining `JSX.IntrinsicElements`, causing conflicts. This has been changed to a
-// re-declaration (removing `extends ThreeElements`) to align with the project's flawed pattern,
-// but it now includes all necessary types for this component to render without errors.
-declare global {
-  namespace JSX {
-    interface IntrinsicElements {
-      primitive: ThreeElements['primitive'];
-      ambientLight: ThreeElements['ambientLight'];
-      directionalLight: ThreeElements['directionalLight'];
-      div: React.DetailedHTMLProps<React.HTMLAttributes<HTMLDivElement>, HTMLDivElement>;
-      header: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
-      h1: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHeadingElement>, HTMLHeadingElement>;
-      main: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
-      footer: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
-      button: React.DetailedHTMLProps<React.ButtonHTMLAttributes<HTMLButtonElement>, HTMLButtonElement>;
-      p: React.DetailedHTMLProps<React.HTMLAttributes<HTMLParagraphElement>, HTMLParagraphElement>;
-      span: React.DetailedHTMLProps<React.HTMLAttributes<HTMLSpanElement>, HTMLSpanElement>;
-      svg: React.SVGProps<SVGSVGElement>;
-      path: React.SVGProps<SVGPathElement>;
-      form: React.DetailedHTMLProps<React.FormHTMLAttributes<HTMLFormElement>, HTMLFormElement>;
-      input: React.DetailedHTMLProps<React.InputHTMLAttributes<HTMLInputElement>, HTMLInputElement>;
-    }
-  }
-}
+// FIX: Removed the local JSX type declaration. A single, consolidated declaration
+// has been moved to the root App.tsx component to resolve project-wide type conflicts
+// and ensure that types from react-three-fiber (like <primitive>) are globally available.
 
 interface ModelProps {
   modelUrl: string;

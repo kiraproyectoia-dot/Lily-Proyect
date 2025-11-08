@@ -2,21 +2,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { SendIcon, AttachmentIcon } from '../constants';
 
-// FIX: Manually adding standard HTML element types to the global JSX namespace.
-// The project's TypeScript configuration appears to be misconfigured, preventing it from
-// automatically recognizing standard JSX intrinsic elements.
-declare global {
-    namespace JSX {
-        interface IntrinsicElements {
-            div: React.DetailedHTMLProps<React.HTMLAttributes<HTMLDivElement>, HTMLDivElement>;
-            form: React.DetailedHTMLProps<React.FormHTMLAttributes<HTMLFormElement>, HTMLFormElement>;
-            input: React.DetailedHTMLProps<React.InputHTMLAttributes<HTMLInputElement>, HTMLInputElement>;
-            button: React.DetailedHTMLProps<React.ButtonHTMLAttributes<HTMLButtonElement>, HTMLButtonElement>;
-            img: React.DetailedHTMLProps<React.ImgHTMLAttributes<HTMLImageElement>, HTMLImageElement>;
-            span: React.DetailedHTMLProps<React.HTMLAttributes<HTMLSpanElement>, HTMLSpanElement>;
-        }
-    }
-}
+// FIX: Removed the local JSX type declaration. A single, consolidated declaration
+// has been moved to the root App.tsx component to resolve project-wide type conflicts.
 
 interface ChatInputProps {
     onSendMessage: (payload: { message: string; attachment?: { dataUrl: string; name: string; type: string; } }) => void;

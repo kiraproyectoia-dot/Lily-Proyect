@@ -1,18 +1,8 @@
 
 import React from 'react';
 
-// FIX: Manually adding standard SVG element types to the global JSX namespace.
-// The project's TypeScript configuration appears to be misconfigured, preventing it from
-// automatically recognizing standard JSX intrinsic elements.
-declare global {
-    namespace JSX {
-        interface IntrinsicElements {
-            svg: React.SVGProps<SVGSVGElement>;
-            path: React.SVGProps<SVGPathElement>;
-            circle: React.SVGProps<SVGCircleElement>;
-        }
-    }
-}
+// FIX: Removed the local JSX type declaration. A single, consolidated declaration
+// has been moved to the root App.tsx component to resolve project-wide type conflicts.
 
 // Centralized constant for Lily's background media (image or video).
 export const LILY_BACKGROUND_MEDIA_URL = 'https://cdn.pixabay.com/video/2023/05/29/164909-831371207_large.mp4';
