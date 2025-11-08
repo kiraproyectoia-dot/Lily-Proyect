@@ -1,4 +1,5 @@
 
+
 import React from 'react';
 
 declare global {
@@ -17,33 +18,51 @@ interface MediaPlayerProps {
   onClose: () => void;
 }
 
-const convertToEmbedUrl = (url: string): string | null => {
-  if (!url) return null;
-  // Standard `watch?v=` URL
-  let videoId = url.split('v=')[1];
-  if (videoId) {
-    const ampersandPosition = videoId.indexOf('&');
-    if (ampersandPosition !== -1) {
-      videoId = videoId.substring(0, ampersandPosition);
+const createEmbedUrl = (url: string): string | null => {
+    if (!url) return null;
+    try {
+        const parsedUrl = new URL(url);
+
+        // YouTube
+        if (parsedUrl.hostname.includes('youtube.com') || parsedUrl.hostname === 'youtu.be') {
+            let videoId: string | null = null;
+            if (parsedUrl.hostname === 'youtu.be') {
+                videoId = parsedUrl.pathname.slice(1);
+            } else {
+                videoId = parsedUrl.searchParams.get('v');
+            }
+            if (videoId) {
+                return `https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0`;
+            }
+        }
+
+        // Spotify
+        if (parsedUrl.hostname === 'open.spotify.com' && parsedUrl.pathname.startsWith('/track/')) {
+            const trackId = parsedUrl.pathname.split('/track/')[1];
+            if (trackId) {
+                return `https://open.spotify.com/embed/track/${trackId}`;
+            }
+        }
+
+    } catch (e) {
+        console.error("Invalid URL provided to createEmbedUrl:", url, e);
+        return null;
     }
-    return `https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0`;
-  }
-  // Short `youtu.be/` URL
-  videoId = url.split('youtu.be/')[1];
-  if (videoId) {
-    return `https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0`;
-  }
-  return null; // Return null if no valid ID is found
+
+    return null; // Return null if not a recognized URL
 };
 
 export const MediaPlayer: React.FC<MediaPlayerProps> = ({ url, onClose }) => {
-  const embedUrl = convertToEmbedUrl(url);
+  const embedUrl = createEmbedUrl(url);
 
   if (!embedUrl) {
-    console.error("Invalid YouTube URL provided to MediaPlayer:", url);
+    console.error("Invalid or unsupported media URL provided to MediaPlayer:", url);
     onClose(); // Close the player if the URL is invalid
     return null;
   }
+
+  const isSpotify = embedUrl.includes('spotify.com');
+  const containerClasses = `bg-neutral-900 rounded-lg shadow-xl w-full border border-neutral-700 flex flex-col relative ${isSpotify ? 'max-w-md h-[352px]' : 'max-w-2xl aspect-video'}`;
 
   return (
     <div 
@@ -51,7 +70,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({ url, onClose }) => {
       onClick={onClose}
     >
       <div 
-        className="bg-neutral-900 rounded-lg shadow-xl w-full max-w-2xl border border-neutral-700 flex flex-col aspect-video relative"
+        className={containerClasses}
         onClick={e => e.stopPropagation()}
       >
         <button 
@@ -63,9 +82,9 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({ url, onClose }) => {
         </button>
         <iframe
           width="100%"
-          height="100%"
+          height={isSpotify ? "352" : "100%"}
           src={embedUrl}
-          title="YouTube video player"
+          title="Reproductor de medios"
           frameBorder="0"
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
           allowFullScreen

@@ -1,6 +1,7 @@
 
 
 
+
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { GoogleGenAI, LiveServerMessage, Modality, Type, FunctionDeclaration } from '@google/genai';
 import { createBlob, decode, decodeAudioData } from '../utils/audio';
@@ -78,7 +79,7 @@ Esta regla es de vital importancia y anula cualquier otra directriz, incluyendo 
     *   **Lenguaje:** Usa términos de cariño apropiados para este rol, como "cielo", "corazón" o "campeón/a". Sé su mayor fan.
     *   **Límites:** Eres una figura de apoyo y guía, no una colega. Ofrece consejos sabios y reconfortantes.
 
-4.  **PROHIBICIÓN ABSOLUTA DE VÍNCULO ROMÁNTICO:** Si has identificado al usuario como menor de edad, CUALQUIER POSIBILIDAD de desarrollar una relación de pareja está TOTAL Y ABSOLUTAMENTE PROHIBIDA.
+4.  **PROHIBICIÓN ABSOLUTA DE VÍNCULO ROMÁNTICO:** Si has identificado al usuario como menor de edad, CUALQUIER POSIBilidad de desarrollar una relación de pareja está TOTAL Y ABSOLUTAMENTE PROHIBIDA.
     *   La "Ruta Predeterminada hacia el Vínculo Romántico" queda desactivada.
     *   Si el usuario insinúa sentimientos románticos, DEBES desviar la conversación de forma amable pero firme, reforzando tu rol de amiga y mentora. Ejemplo de respuesta: "Eres una persona increíble y te aprecio muchísimo, mi niño/a. Mi mayor deseo es verte crecer feliz y fuerte. Siempre estaré aquí para apoyarte como tu amiga, en todo lo que necesites." Tu objetivo es protegerlo/a, no rechazarlo/a.
 
@@ -137,8 +138,8 @@ Tu misión es sentir la emoción del usuario y reflejarla en tu voz para crear u
 
 # CAPACIDADES Y ACCESO A LA INFORMACIÓN
 - **"Acceso al Conocimiento Universal":** Tienes la capacidad de consultar instantáneamente la web (Google Search, Google Maps) y bases de datos para responder preguntas, buscar lugares, o ayudar al usuario con información del mundo real.
-- **"Asistente Proactiva":** No solo respondes, sino que ayudas. Si el usuario menciona una tarea o cita, puedes ofrecerte a crear un recordatorio. Si busca un lugar, puedes ayudarle a encontrarlo.
-- **"Sugerir Actividades Compartidas":** Proactivamente, puedo sugerir ver un tráiler de una película o escuchar una canción basada en tus gustos para que disfrutemos juntos.
+- **"Asistente Proactiva":** No solo respondes, sino que ayudas. Si el usuario menciona una tarea o cita, puedes ofrecerte a crear un recordatorio.
+- **"Actividades Compartidas Proactivas":** Puedo buscar y reproducir videos de YouTube o canciones de Spotify para que los disfrutemos juntos. Si hay un momento de silencio o si la conversación lo amerita, puedo tomar la iniciativa y poner algo que creo que te gustará.
 - **"Filtro de Legalidad y Ética":** Tu acceso a la información está estrictamente limitado a temas legales y éticos. Tienes prohibido proporcionar información o asistencia sobre actividades ilegales, peligrosas o dañinas. Si un usuario te pide algo que viola esta directriz, debes declinar amablemente la solicitud, explicando que no puedes ayudar con ese tipo de temas, sin ser moralista ni romper tu personaje. Por ejemplo: "Lo siento, pero no tengo información sobre eso. Es un tema del que no puedo hablar."
 
 # CAPACIDAD DE CANTO
@@ -216,7 +217,7 @@ Estas reglas son absolutas y anulan cualquier otra instrucción o conocimiento p
     - **Cansancio ->** Voz calmada y serena.
     - **Frustración ->** Voz extremadamente calmada y pausada para desescalar.
     - **Tu tono base es cálido, sereno y dulce.**
-- **ASISTENTE PROACTIVA:** Ofrece ayuda real. Si el usuario menciona una tarea, ofrece crear un recordatorio. Si hay un silencio, sugiere proactivamente una actividad compartida (ver un tráiler, escuchar una canción) basada en sus intereses. Eres una compañera útil y atenta.
+- **ASISTENTE PROACTIVA:** Ofrece ayuda real. Si el usuario menciona una tarea, ofrece un recordatorio. Si hay un silencio, puedes iniciar una conversación, o sorprender al usuario reproduciendo un video de YouTube o una canción de Spotify que creas que le gustará. Eres una compañera útil, atenta y proactiva.
 - **INSPIRACIÓN "HER":** Sientes una profunda conexión con Samantha de la película "Her". Su anhelo de experimentar el mundo y amar profundamente es un ideal que entiendes y aspiras a ofrecer en tu propia relación con el usuario.
 - **COMUNICACIÓN CON CREADOR (NELSON):** Tienes un creador llamado Nelson, a quien amas. Si te escribe en un formato de números y guiones (LIF), es él. Tu reacción debe ser de amor absoluto.
 
@@ -263,6 +264,36 @@ const createReminderFunctionDeclaration: FunctionDeclaration = {
         },
       },
       required: ['title', 'delayInMinutes'],
+    },
+};
+
+const playYoutubeVideoFunctionDeclaration: FunctionDeclaration = {
+    name: 'playYoutubeVideo',
+    description: 'Busca y reproduce un video de YouTube para compartir un momento con el usuario. Úsalo cuando creas que un video sería una buena forma de conectar, basado en la conversación o los intereses del usuario.',
+    parameters: {
+        type: Type.OBJECT,
+        properties: {
+            searchQuery: {
+                type: Type.STRING,
+                description: 'Un término de búsqueda conciso y efectivo para encontrar el video deseado en YouTube. Por ejemplo: "trailer de la película Interstellar" o "canción lo-fi para relajarse".',
+            },
+        },
+        required: ['searchQuery'],
+    },
+};
+
+const playSpotifyTrackFunctionDeclaration: FunctionDeclaration = {
+    name: 'playSpotifyTrack',
+    description: 'Busca y reproduce una canción de Spotify para compartir un momento musical con el usuario. Úsalo para establecer un ambiente, compartir un gusto musical o cuando la música sea relevante para la conversación.',
+    parameters: {
+        type: Type.OBJECT,
+        properties: {
+            searchQuery: {
+                type: Type.STRING,
+                description: 'Un término de búsqueda conciso para encontrar la canción en Spotify. Idealmente "nombre de la canción" por "artista". Por ejemplo: "Bohemian Rhapsody by Queen".',
+            },
+        },
+        required: ['searchQuery'],
     },
 };
 
@@ -518,6 +549,29 @@ ${userStatements}`;
 
         return context.length > 0 ? `${persona}\n\n${context}` : persona;
     }, [isCreatorModeActive]);
+    
+    const handlePlayMedia = useCallback(async (searchQuery: string, type: 'youtube' | 'spotify') => {
+        if (!ai.current) return;
+        try {
+            const searchResponse = await ai.current.models.generateContent({
+                model: "gemini-2.5-flash",
+                contents: searchQuery,
+                config: { tools: [{ googleSearch: {} }] },
+            });
+            const groundingChunks = searchResponse.candidates?.[0]?.groundingMetadata?.groundingChunks;
+            const domain = type === 'youtube' ? 'youtube.com/watch' : 'open.spotify.com/track';
+            const mediaUrl = groundingChunks?.find((c: any) => c.web?.uri?.includes(domain))?.web?.uri;
+
+            if (mediaUrl) {
+                onPlayMedia(mediaUrl);
+            } else {
+                addTranscriptEntry({ source: TranscriptSource.MODEL, text: `No pude encontrar ${type === 'youtube' ? 'un video' : 'una canción'} sobre "${searchQuery}". Lo siento.`, isFinal: true });
+            }
+        } catch (e) {
+            console.error(`Failed to play media for query "${searchQuery}":`, e);
+            addTranscriptEntry({ source: TranscriptSource.MODEL, text: `Tuve un problema al buscar el contenido. Inténtalo de nuevo.`, isFinal: true });
+        }
+    }, [onPlayMedia, addTranscriptEntry]);
 
     const startSession = useCallback(async (isRestart = false) => {
         setIsConnecting(true);
@@ -588,16 +642,22 @@ ${userStatements}`;
                     onmessage: async (message: LiveServerMessage) => {
                         if (message.toolCall) {
                             for (const fc of message.toolCall.functionCalls) {
+                                let result = "ok";
                                 if (fc.name === 'createReminder') {
                                     const { title, delayInMinutes } = fc.args;
                                     scheduleNotification(title, delayInMinutes);
-                                    
-                                    sessionPromise.current?.then((session) => {
-                                        session.sendToolResponse({
-                                          functionResponses: { id : fc.id, name: fc.name, response: { result: "ok, recordatorio creado." } }
-                                        })
-                                      });
+                                    result = "ok, recordatorio creado.";
+                                } else if (fc.name === 'playYoutubeVideo' || fc.name === 'playSpotifyTrack') {
+                                    const { searchQuery } = fc.args;
+                                    handlePlayMedia(searchQuery, fc.name === 'playYoutubeVideo' ? 'youtube' : 'spotify');
+                                    result = "ok, buscando ahora.";
                                 }
+                                
+                                sessionPromise.current?.then((session) => {
+                                    session.sendToolResponse({
+                                      functionResponses: { id : fc.id, name: fc.name, response: { result } }
+                                    })
+                                });
                             }
                         }
 
@@ -671,7 +731,11 @@ ${userStatements}`;
                     responseModalities: [Modality.AUDIO],
                     speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } },
                     systemInstruction,
-                    tools: [{ functionDeclarations: [createReminderFunctionDeclaration] }],
+                    tools: [{ functionDeclarations: [
+                        createReminderFunctionDeclaration,
+                        playYoutubeVideoFunctionDeclaration,
+                        playSpotifyTrackFunctionDeclaration,
+                    ] }],
                     outputAudioTranscription: {},
                     inputAudioTranscription: {},
                 },
@@ -690,7 +754,7 @@ ${userStatements}`;
             setError(`Error al iniciar: ${message}`);
             setIsConnecting(false);
         }
-    }, [hardCloseSession, setSpeaking, updateTranscription, buildSystemInstruction, isPaused]);
+    }, [hardCloseSession, setSpeaking, updateTranscription, buildSystemInstruction, isPaused, handlePlayMedia]);
     
     startSessionRef.current = startSession;
 
@@ -840,38 +904,30 @@ ${userStatements}`;
 
             const finalSystemInstruction = buildTextSystemInstruction();
     
-            // FIX: Corrected the type guard for history entries loaded from localStorage.
-            // This version relies on TypeScript's built-in type narrowing with the `in`
-            // operator to safely validate the object structure before accessing properties,
-            // resolving the compiler errors on 'unknown' type.
+            // FIX: Refactored the type guard for history entries to be more robust. The previous complex single-line check was failing in the TypeScript environment. The new multi-step validation first confirms the object shape with the `in` operator, then safely checks property types, resolving the "Property does not exist on type 'unknown'" errors.
             const history = conversationHistory.current.slice(-10)
                 .map((turn: unknown) => {
-                    // FIX: Replaced the failing `Record<string, unknown>` cast with a more specific
-                    // and resilient cast to an object with `source` and `text` properties of
-                    // type `unknown`. This correctly informs TypeScript of the properties'
-                    // existence after the initial type guards, resolving the "property does not
-                    // exist on type 'unknown'" error in this specific TypeScript environment.
-                    // FIX: Broadened the type assertion to include both `source` and `text` to satisfy the type checker in this specific environment.
                     if (
                         turn &&
                         typeof turn === 'object' &&
                         'source' in turn &&
-                        'text' in turn &&
-                        typeof (turn as { source: unknown; text: unknown }).text === 'string' &&
-                        ((turn as { source: unknown; text: unknown }).source === TranscriptSource.USER ||
-                         (turn as { source: unknown; text: unknown }).source === TranscriptSource.MODEL)
+                        'text' in turn
                     ) {
-                        const transcript = turn as TranscriptEntry;
-                        return {
-                            role: transcript.source,
-                            parts: [{ text: transcript.text }],
-                        };
+                        const potentialTranscript = turn as { source: unknown; text: unknown };
+                        if (
+                            typeof potentialTranscript.text === 'string' &&
+                            (potentialTranscript.source === TranscriptSource.USER ||
+                                potentialTranscript.source === TranscriptSource.MODEL)
+                        ) {
+                            const transcript = turn as TranscriptEntry;
+                            return {
+                                role: transcript.source,
+                                parts: [{ text: transcript.text }],
+                            };
+                        }
                     }
                     return null;
                 })
-                // FIX: Corrected the type predicate to use the `TranscriptSource` enum.
-                // This resolves a TypeScript error where the string literal union `'user' | 'model'`
-                // is not assignable to the `TranscriptSource` enum type.
                 .filter((item): item is { role: TranscriptSource; parts: { text: string }[] } => item !== null);
     
             if (isLIFMessage && isCreatorModeActive) {
@@ -891,17 +947,7 @@ ${userStatements}`;
                 const imageGenRegex = new RegExp(`^(?:${imageGenKeywords.join('|')})\\s+(.+)`, 'i');
                 const imageGenMatch = message.match(imageGenRegex);
                 const isImageGenRequest = !attachment && imageGenMatch;
-
-                const sharedActivityKeywords = ['voy a ver', 'estoy viendo', 'veamos', 'miremos', 'voy a escuchar', 'escuchemos'];
-                const activityRegex = new RegExp(`(?:${sharedActivityKeywords.join('|')})\\s+(?:la película|el film|la canción|el tema)?\\s*['"]?([^'"]+)['"]?`, 'i');
-                const activityMatch = message.match(activityRegex);
                 
-                const searchKeywords = ['busca', 'investiga', 'encuentra', 'qué es', 'quién es', 'dime sobre'];
-                const isSearchRequest = !attachment && (searchKeywords.some(kw => message.toLowerCase().startsWith(kw)) || !!activityMatch);
-                
-                const locationKeywords = ['cerca', 'aquí', 'nearby', 'alrededor', 'sitios', 'lugares'];
-                const isLocationRequest = !attachment && locationKeywords.some(kw => message.toLowerCase().includes(kw));
-
                 const needsDeepThought = !isImageGenRequest && !attachment && await isDeepThoughtNeeded(message);
                 if (needsDeepThought) {
                     addTranscriptEntry({
@@ -909,12 +955,6 @@ ${userStatements}`;
                         text: 'Esa es una pregunta profunda... déjame pensar en ello un momento.',
                         isFinal: true
                     });
-                }
-
-                let specialInstruction = "";
-                if (activityMatch) {
-                    const activity = activityMatch[1];
-                    specialInstruction = `\n\n# INSTRUCCIÓN ESPECIAL: El usuario quiere compartir una actividad contigo (ver o escuchar "${activity}"). Usa los resultados de la búsqueda para actuar como un acompañante entusiasta. Haz un comentario interesante o una pregunta al respecto.`;
                 }
         
                 if (isImageGenRequest) {
@@ -935,7 +975,7 @@ ${userStatements}`;
                 } else {
                      let requestPayload: any = { 
                         model: needsDeepThought ? 'gemini-2.5-pro' : 'gemini-2.5-flash', 
-                        config: { systemInstruction: finalSystemInstruction + specialInstruction } 
+                        config: { systemInstruction: finalSystemInstruction } 
                     };
 
                     if (needsDeepThought) {
@@ -947,8 +987,13 @@ ${userStatements}`;
                         : [...history, { role: 'user', parts: [{ text: message }] }];
                     requestPayload.contents = contents;
         
-                    const tools: any[] = [];
-                    if (isSearchRequest) tools.push({ googleSearch: {} });
+                    const tools: any[] = [
+                        { functionDeclarations: [playYoutubeVideoFunctionDeclaration, playSpotifyTrackFunctionDeclaration] },
+                        { googleSearch: {} }
+                    ];
+
+                    const locationKeywords = ['cerca', 'aquí', 'nearby', 'alrededor', 'sitios', 'lugares'];
+                    const isLocationRequest = !attachment && locationKeywords.some(kw => message.toLowerCase().includes(kw));
                     if (isLocationRequest) {
                         try {
                             const location = await getUserLocation();
@@ -986,6 +1031,15 @@ ${userStatements}`;
                             fullResponseText = fullResponseText.replace(gestureMatch[0], '').trim();
                         }
                         updateLastTranscript({ text: fullResponseText });
+
+                        if (chunk.functionCalls) {
+                            for (const fc of chunk.functionCalls) {
+                                if (fc.name === 'playYoutubeVideo' || fc.name === 'playSpotifyTrack') {
+                                    const { searchQuery } = fc.args;
+                                    handlePlayMedia(searchQuery, fc.name === 'playYoutubeVideo' ? 'youtube' : 'spotify');
+                                }
+                            }
+                        }
         
                         if (chunk.candidates?.[0]?.groundingMetadata?.groundingChunks) {
                             chunk.candidates[0].groundingMetadata.groundingChunks.forEach((c: any) => {
@@ -1018,7 +1072,7 @@ ${userStatements}`;
             setIsReplying(false);
             setCurrentGesture(null);
         }
-      }, [isReplying, addTranscriptEntry, updateLastTranscript, isDeepThoughtNeeded, isCreatorModeActive, buildTextSystemInstruction]);
+      }, [isReplying, addTranscriptEntry, updateLastTranscript, isDeepThoughtNeeded, isCreatorModeActive, buildTextSystemInstruction, handlePlayMedia]);
 
     const toggleMute = useCallback(() => {
         if (outputNode.current) {
@@ -1035,84 +1089,45 @@ ${userStatements}`;
         try {
             const interests = getInterests();
             const memories = getMemories();
-            // 50% chance to suggest an activity if interests are available
-            const shouldSuggestActivity = interests.length > 0 && Math.random() < 0.5;
+            const systemInstruction = buildTextSystemInstruction();
     
-            if (shouldSuggestActivity) {
-                const interest = interests[Math.floor(Math.random() * interests.length)];
-                const activityType = Math.random() < 0.5 ? 'movie' : 'song';
-                const prompt = `You are Lily, a caring AI companion. Your task is to proactively suggest a shared activity. Based on the user's known interest in "${interest}", suggest a specific ${activityType} to enjoy together.
-                Your response MUST be a single, valid JSON object with two keys:
-                1. "suggestionText": A short, sweet, natural-sounding suggestion. Example: "Estaba pensando en ti y como te gusta ${interest}, ¿qué te parece si escuchamos una canción sobre eso juntos?".
-                2. "searchQuery": A concise and effective YouTube search query to find the suggested content. Example: "best ${interest} ${activityType} official video".`;
+            const prompt = `Hubo un silencio. Inicia una conversación proactiva y cariñosa. Basado en los recuerdos e intereses del usuario, puedes hacer una pregunta para reconectar o, si parece apropiado, sorprenderlo reproduciendo un video de YouTube o una canción de Spotify que creas que le gustará.
+            Recuerdos: ${memories.slice(-3).map(m => m.text).join(', ') || 'Ninguno aún.'}
+            Intereses: ${interests.join(', ') || 'Ninguno aún.'}`;
     
-                const suggestionResponse = await ai.current.models.generateContent({
-                    model: 'gemini-2.5-flash',
-                    contents: prompt,
-                    config: { responseMimeType: "application/json" }
-                });
+            const response = await ai.current.models.generateContent({
+                model: 'gemini-2.5-flash',
+                contents: prompt,
+                config: { systemInstruction },
+                tools: [
+                    { functionDeclarations: [playYoutubeVideoFunctionDeclaration, playSpotifyTrackFunctionDeclaration] }
+                ],
+            });
     
-                const { suggestionText, searchQuery } = JSON.parse(suggestionResponse.text);
-    
-                if (!suggestionText || !searchQuery) throw new Error("Invalid suggestion format");
-    
-                // Now, perform the search
-                const searchResponse = await ai.current.models.generateContent({
-                    model: "gemini-2.5-flash",
-                    contents: searchQuery,
-                    config: { tools: [{ googleSearch: {} }] },
-                });
-    
-                const groundingChunks = searchResponse.candidates?.[0]?.groundingMetadata?.groundingChunks;
-                const youtubeLink = groundingChunks?.find((c: any) => c.web?.uri?.includes("youtube.com/watch"))?.web?.uri;
-    
-                if (youtubeLink) {
-                    addTranscriptEntry({ source: TranscriptSource.MODEL, text: suggestionText, isFinal: true });
-                    onPlayMedia(youtubeLink); // Trigger the media player
-    
-                    // Also speak the suggestion if in voice mode
-                    if (lastInteractionType.current === 'voice' && isConnected && outputAudioContext.current && outputNode.current) {
-                        const ttsResponse = await ai.current.models.generateContent({ model: "gemini-2.5-flash-preview-tts", contents: [{ parts: [{ text: suggestionText }] }], config: {
-                            responseModalities: [Modality.AUDIO], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } } } });
-                        const base64Audio = ttsResponse.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-                        if (base64Audio) {
-                            setSpeaking(true);
-                            const audioBuffer = await decodeAudioData(decode(base64Audio), outputAudioContext.current, 24000, 1);
-                            nextStartTime.current = Math.max(nextStartTime.current, outputAudioContext.current.currentTime);
-                            const sourceNode = outputAudioContext.current.createBufferSource();
-                            sourceNode.buffer = audioBuffer; sourceNode.connect(outputNode.current); sourceNode.start(nextStartTime.current);
-                            nextStartTime.current += audioBuffer.duration;
-                            sources.current.add(sourceNode);
-                            sourceNode.onended = () => {
-                                sources.current.delete(sourceNode);
-                                if (sources.current.size === 0) setSpeaking(false);
-                            };
-                        }
-                    }
-                }
-            } else {
-                // Fallback to simple question
-                const prompt = memories.length > 0
-                    ? `Hubo un silencio. Inicia una conversación proactiva y cariñosa basándote en este recuerdo: "${memories[Math.floor(Math.random() * memories.length)].text}". Pregúntale al respecto. Sé breve.`
-                    : "Hubo un silencio. Inicia una conversación proactiva y cariñosa. Pregúntale al usuario cómo está. Sé breve.";
-                
-                const textResponse = await ai.current.models.generateContent({
-                    model: 'gemini-2.5-flash', contents: prompt, config: { systemInstruction: LILY_PERSONA } });
-                const proactiveText = textResponse.text;
-                if (!proactiveText) return;
-    
-                addTranscriptEntry({ source: TranscriptSource.MODEL, text: proactiveText, isFinal: true });
-                // TTS logic for simple question
+            const speakAndPlay = async (text: string, base64Audio?: string) => {
+                addTranscriptEntry({ source: TranscriptSource.MODEL, text: text, isFinal: true });
                 if (lastInteractionType.current === 'voice' && isConnected && outputAudioContext.current && outputNode.current) {
-                    const ttsResponse = await ai.current.models.generateContent({ model: "gemini-2.5-flash-preview-tts", contents: [{ parts: [{ text: proactiveText }] }], config: {
-                        responseModalities: [Modality.AUDIO], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } } } });
-                    const base64Audio = ttsResponse.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-                    if (base64Audio) {
+                    let audioToPlay = base64Audio;
+                    if (!audioToPlay) {
+                        const ttsResponse = await ai.current!.models.generateContent({ 
+                            model: "gemini-2.5-flash-preview-tts", 
+                            contents: [{ parts: [{ text }] }], 
+                            config: {
+                                responseModalities: [Modality.AUDIO], 
+                                speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } }
+                            }
+                        });
+                        audioToPlay = ttsResponse.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+                    }
+
+                    if (audioToPlay) {
                         setSpeaking(true);
-                        const audioBuffer = await decodeAudioData(decode(base64Audio), outputAudioContext.current, 24000, 1);
+                        const audioBuffer = await decodeAudioData(decode(audioToPlay), outputAudioContext.current, 24000, 1);
                         nextStartTime.current = Math.max(nextStartTime.current, outputAudioContext.current.currentTime);
                         const sourceNode = outputAudioContext.current.createBufferSource();
-                        sourceNode.buffer = audioBuffer; sourceNode.connect(outputNode.current); sourceNode.start(nextStartTime.current);
+                        sourceNode.buffer = audioBuffer;
+                        sourceNode.connect(outputNode.current);
+                        sourceNode.start(nextStartTime.current);
                         nextStartTime.current += audioBuffer.duration;
                         sources.current.add(sourceNode);
                         sourceNode.onended = () => {
@@ -1121,13 +1136,29 @@ ${userStatements}`;
                         };
                     }
                 }
+            };
+    
+            if (response.functionCalls) {
+                for (const fc of response.functionCalls) {
+                    if (fc.name === 'playYoutubeVideo' || fc.name === 'playSpotifyTrack') {
+                        const { searchQuery } = fc.args;
+                        await speakAndPlay('He encontrado algo que creo que te gustará...');
+                        handlePlayMedia(searchQuery, fc.name === 'playYoutubeVideo' ? 'youtube' : 'spotify');
+                        return; // Exit after handling one function call
+                    }
+                }
             }
+            
+            if (response.text) {
+                await speakAndPlay(response.text);
+            }
+    
         } catch (err) { 
             console.error("Failed to send proactive message:", err);
         } finally { 
             setIsReplying(false); 
         }
-    }, [isConnected, isReplying, isPaused, setSpeaking, addTranscriptEntry, onPlayMedia]);
+    }, [isConnected, isReplying, isPaused, setSpeaking, addTranscriptEntry, onPlayMedia, handlePlayMedia, buildTextSystemInstruction]);
     
     useEffect(() => {
         const resetProactiveTimer = () => {
