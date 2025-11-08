@@ -59,9 +59,12 @@ const LilyModel: React.FC<ModelProps> = ({ modelUrl, isSpeaking, currentGesture,
 
   const [visemes, setVisemes] = useState<Record<string, MorphTargetInfo>>({});
   const [headBone, setHeadBone] = useState<Bone | null>(null);
+  const [chestBone, setChestBone] = useState<Bone | null>(null);
   const [spineBone, setSpineBone] = useState<Bone | null>(null);
   const [leftEyeBone, setLeftEyeBone] = useState<Bone | null>(null);
   const [rightEyeBone, setRightEyeBone] = useState<Bone | null>(null);
+  const [leftShoulderBone, setLeftShoulderBone] = useState<Bone | null>(null);
+  const [rightShoulderBone, setRightShoulderBone] = useState<Bone | null>(null);
   
   const animationsMap = useRef<Record<string, AnimationAction>>({});
   const idleAnimations = useRef<AnimationAction[]>([]);
@@ -124,9 +127,12 @@ const LilyModel: React.FC<ModelProps> = ({ modelUrl, isSpeaking, currentGesture,
     
     let candidates = {
         head: { bone: null as Bone | null, score: 0 },
+        chest: { bone: null as Bone | null, score: 0 },
         spine: { bone: null as Bone | null, score: 0 },
         leftEye: { bone: null as Bone | null, score: 0 },
         rightEye: { bone: null as Bone | null, score: 0 },
+        leftShoulder: { bone: null as Bone | null, score: 0 },
+        rightShoulder: { bone: null as Bone | null, score: 0 },
     };
     
     const discoveredVisemes: Record<string, MorphTargetInfo> = {};
@@ -161,7 +167,10 @@ const LilyModel: React.FC<ModelProps> = ({ modelUrl, isSpeaking, currentGesture,
                     s = score(bone.name, { 'head': 2, 'neck': 1 });
                     if (s > candidates.head.score) candidates.head = { bone, score: s };
 
-                    s = score(bone.name, { 'spine2': 3, 'spine': 2, 'chest': 1 });
+                    s = score(bone.name, { 'spine2': 3, 'chest': 2 });
+                    if (s > candidates.chest.score) candidates.chest = { bone, score: s };
+                    
+                    s = score(bone.name, { 'spine1': 2, 'spine': 1 });
                     if (s > candidates.spine.score) candidates.spine = { bone, score: s };
 
                     s = score(bone.name, { 'lefteye': 1 });
@@ -169,6 +178,12 @@ const LilyModel: React.FC<ModelProps> = ({ modelUrl, isSpeaking, currentGesture,
 
                     s = score(bone.name, { 'righteye': 1 });
                     if (s > candidates.rightEye.score) candidates.rightEye = { bone, score: s };
+
+                    s = score(bone.name, { 'leftshoulder': 1 });
+                    if (s > candidates.leftShoulder.score) candidates.leftShoulder = { bone, score: s };
+
+                    s = score(bone.name, { 'rightshoulder': 1 });
+                    if (s > candidates.rightShoulder.score) candidates.rightShoulder = { bone, score: s };
                 });
             }
         }
@@ -186,15 +201,24 @@ const LilyModel: React.FC<ModelProps> = ({ modelUrl, isSpeaking, currentGesture,
     }
 
     setHeadBone(candidates.head.bone);
+    setChestBone(candidates.chest.bone);
     setSpineBone(candidates.spine.bone);
     setLeftEyeBone(candidates.leftEye.bone);
     setRightEyeBone(candidates.rightEye.bone);
+    setLeftShoulderBone(candidates.leftShoulder.bone);
+    setRightShoulderBone(candidates.rightShoulder.bone);
     
-    if (candidates.head.bone) console.log(`AVATAR ALIVE: Head bone found ('${candidates.head.bone.name}'). Idle sway enabled.`);
-    else console.warn("AVATAR ALIVE: Head/Neck bone not found. Idle sway disabled.");
+    if (candidates.head.bone) console.log(`AVATAR ALIVE: Head bone found ('${candidates.head.bone.name}').`);
+    else console.warn("AVATAR ALIVE: Head/Neck bone not found. Procedural animation will be limited.");
     
-    if (candidates.spine.bone) console.log(`AVATAR ALIVE: Spine bone found ('${candidates.spine.bone.name}'). Breathing enabled.`);
-    else console.warn("AVATAR ALIVE: Spine/Chest bone not found. Breathing disabled.");
+    if (candidates.chest.bone) console.log(`AVATAR ALIVE: Chest bone found ('${candidates.chest.bone.name}').`);
+    else console.warn("AVATAR ALIVE: Chest bone not found. Procedural animation will be limited.");
+    
+    if (candidates.spine.bone) console.log(`AVATAR ALIVE: Spine bone found ('${candidates.spine.bone.name}').`);
+    else console.warn("AVATAR ALIVE: Spine bone not found. Procedural animation will be limited.");
+    
+    if (candidates.leftShoulder.bone && candidates.rightShoulder.bone) console.log(`AVATAR ALIVE: Shoulder bones found. Natural shoulder movement enabled.`);
+    else console.warn("AVATAR ALIVE: One or both shoulder bones not found. Shoulder movement disabled.");
 
     if (candidates.leftEye.bone && candidates.rightEye.bone) console.log(`AVATAR ALIVE: Eye bones found ('${candidates.leftEye.bone.name}', '${candidates.rightEye.bone.name}'). Eye darting enabled.`);
     else console.warn("AVATAR ALIVE: One or both eye bones not found. Eye darting disabled.");
@@ -234,8 +258,6 @@ const LilyModel: React.FC<ModelProps> = ({ modelUrl, isSpeaking, currentGesture,
     mixer.current?.update(delta);
     
     // --- LIP-SYNC (REFINED: NATURAL VISEMES & INTENSITY) ---
-    // A curated list of visemes that produce a more natural, less exaggerated mouth movement.
-    // This avoids visemes that can look like sneers or show too much teeth (e.g., 'viseme_E', 'viseme_I').
     const SAFE_VISEME_NAMES = [
         'viseme_aa', 'viseme_O', 'viseme_U', 'viseme_PP',
         'viseme_RR', 'viseme_nn', 'viseme_CH', 'viseme_DD', 'viseme_kk'
@@ -246,20 +268,18 @@ const LilyModel: React.FC<ModelProps> = ({ modelUrl, isSpeaking, currentGesture,
         let intensity = 0;
         if (isSpeaking && getAudioVolume) {
             const volume = getAudioVolume();
-            // Reduced the multiplier and adjusted the power curve for a more subtle animation.
             intensity = Math.pow(volume, 0.8) * 0.9;
         }
 
         lipSyncState.current.targetIntensity = MathUtils.lerp(
             lipSyncState.current.targetIntensity,
-            Math.min(intensity, 1.0), // Clamp intensity
-            delta * 15.0 // Reactivity
+            Math.min(intensity, 1.0),
+            delta * 15.0
         );
         
         if (lipSyncState.current.targetIntensity > 0.1) {
             const timeSinceLastVisemeChange = now - lipSyncState.current.lastVisemeChangeTime;
             if (timeSinceLastVisemeChange > 0.09) {
-                // Filter to only use the 'safe' visemes for a more natural look.
                 const safeVisemeIndices = visemeKeys
                     .map((key, index) => ({ key, index }))
                     .filter(item => SAFE_VISEME_NAMES.includes(item.key))
@@ -283,9 +303,7 @@ const LilyModel: React.FC<ModelProps> = ({ modelUrl, isSpeaking, currentGesture,
             if (visemeInfo.mesh.morphTargetInfluences) {
                 const influence = visemeInfo.mesh.morphTargetInfluences[visemeInfo.index];
                 const isCurrentViseme = index === lipSyncState.current.currentVisemeIndex;
-                
                 const target = isCurrentViseme ? lipSyncState.current.targetIntensity : 0;
-                
                 const newInfluence = MathUtils.lerp(influence, target, delta * 25);
                 visemeInfo.mesh.morphTargetInfluences[visemeInfo.index] = newInfluence;
             }
@@ -302,9 +320,10 @@ const LilyModel: React.FC<ModelProps> = ({ modelUrl, isSpeaking, currentGesture,
         idleAnimState.current.currentAction = nextAction;
         nextAction.reset().play();
         const duration = nextAction.getClip().duration;
-        idleAnimState.current.nextTime = now + duration + 10 + Math.random() * 10;
+        idleAnimState.current.nextTime = now + duration + 5 + Math.random() * 8;
     }
     
+    // --- EYE DARTING ---
     if (leftEyeBone && rightEyeBone) {
         const initialLeft = initialBoneRotations.current.get(leftEyeBone.uuid);
         const initialRight = initialBoneRotations.current.get(rightEyeBone.uuid);
@@ -313,10 +332,8 @@ const LilyModel: React.FC<ModelProps> = ({ modelUrl, isSpeaking, currentGesture,
             if (pauseProcedural) {
                 leftEyeBone.rotation.x = MathUtils.lerp(leftEyeBone.rotation.x, initialLeft.x, lerpFactor);
                 leftEyeBone.rotation.y = MathUtils.lerp(leftEyeBone.rotation.y, initialLeft.y, lerpFactor);
-                leftEyeBone.rotation.z = MathUtils.lerp(leftEyeBone.rotation.z, initialLeft.z, lerpFactor);
                 rightEyeBone.rotation.x = MathUtils.lerp(rightEyeBone.rotation.x, initialRight.x, lerpFactor);
                 rightEyeBone.rotation.y = MathUtils.lerp(rightEyeBone.rotation.y, initialRight.y, lerpFactor);
-                rightEyeBone.rotation.z = MathUtils.lerp(rightEyeBone.rotation.z, initialRight.z, lerpFactor);
             } else {
                 if (now > eyeDartState.current.nextTime) {
                     const x = (Math.random() - 0.5) * 0.25;
@@ -326,49 +343,94 @@ const LilyModel: React.FC<ModelProps> = ({ modelUrl, isSpeaking, currentGesture,
                 }
                 leftEyeBone.rotation.y = MathUtils.lerp(leftEyeBone.rotation.y, eyeDartState.current.target.x, lerpFactor);
                 leftEyeBone.rotation.x = MathUtils.lerp(leftEyeBone.rotation.x, eyeDartState.current.target.y, lerpFactor);
-                leftEyeBone.rotation.z = MathUtils.lerp(leftEyeBone.rotation.z, initialLeft.z, lerpFactor);
                 rightEyeBone.rotation.y = MathUtils.lerp(rightEyeBone.rotation.y, eyeDartState.current.target.x, lerpFactor);
                 rightEyeBone.rotation.x = MathUtils.lerp(rightEyeBone.rotation.x, eyeDartState.current.target.y, lerpFactor);
-                rightEyeBone.rotation.z = MathUtils.lerp(rightEyeBone.rotation.z, initialRight.z, lerpFactor);
             }
         }
     }
+    
+    // --- HUMAN-LIKE PROCEDURAL BODY ANIMATION ---
+    const swayFrequency = 0.3;
+    const swayAmplitude = 0.02;
+    const breathFrequency = 0.4;
+    const breathAmplitude = 0.008;
 
+    // Lower spine provides the base sway
     if (spineBone) {
-        const initialRotation = initialBoneRotations.current.get(spineBone.uuid);
-        if (initialRotation) {
-            const lerpFactor = delta * 1.5;
+        const initial = initialBoneRotations.current.get(spineBone.uuid);
+        if (initial) {
+            const lerpFactor = delta * 0.8;
             if (pauseProcedural) {
-                spineBone.rotation.x = MathUtils.lerp(spineBone.rotation.x, initialRotation.x, lerpFactor);
-                spineBone.rotation.y = MathUtils.lerp(spineBone.rotation.y, initialRotation.y, lerpFactor);
-                spineBone.rotation.z = MathUtils.lerp(spineBone.rotation.z, initialRotation.z, lerpFactor);
+                spineBone.rotation.x = MathUtils.lerp(spineBone.rotation.x, initial.x, lerpFactor);
+                spineBone.rotation.y = MathUtils.lerp(spineBone.rotation.y, initial.y, lerpFactor);
             } else {
-                const breathFrequency = 0.6;
-                const breathAmplitude = 0.015;
-                const targetRotationX = initialRotation.x + Math.sin(now * breathFrequency) * breathAmplitude;
-                spineBone.rotation.x = MathUtils.lerp(spineBone.rotation.x, targetRotationX, lerpFactor);
-                spineBone.rotation.y = MathUtils.lerp(spineBone.rotation.y, initialRotation.y, lerpFactor);
-                spineBone.rotation.z = MathUtils.lerp(spineBone.rotation.z, initialRotation.z, lerpFactor);
+                const targetY = initial.y + Math.sin(now * swayFrequency) * swayAmplitude;
+                const targetX = initial.x + Math.cos(now * swayFrequency) * swayAmplitude * 0.5;
+                spineBone.rotation.y = MathUtils.lerp(spineBone.rotation.y, targetY, lerpFactor);
+                spineBone.rotation.x = MathUtils.lerp(spineBone.rotation.x, targetX, lerpFactor);
             }
         }
     }
 
-    if (headBone) {
-        const initialRotation = initialBoneRotations.current.get(headBone.uuid);
-        if (initialRotation) {
-            const lerpFactor = delta * 0.7;
+    // Chest counters the sway slightly and adds its own breathing motion
+    if (chestBone) {
+        const initial = initialBoneRotations.current.get(chestBone.uuid);
+        const spineInitial = spineBone ? initialBoneRotations.current.get(spineBone.uuid) : null;
+        if (initial && spineInitial) {
+            const lerpFactor = delta * 1.0;
+            const spineYDelta = spineBone ? spineBone.rotation.y - spineInitial.y : 0;
+            
             if (pauseProcedural) {
-                headBone.rotation.x = MathUtils.lerp(headBone.rotation.x, initialRotation.x, lerpFactor);
-                headBone.rotation.y = MathUtils.lerp(headBone.rotation.y, initialRotation.y, lerpFactor);
-                headBone.rotation.z = MathUtils.lerp(headBone.rotation.z, initialRotation.z, lerpFactor);
+                chestBone.rotation.x = MathUtils.lerp(chestBone.rotation.x, initial.x, lerpFactor);
+                chestBone.rotation.y = MathUtils.lerp(chestBone.rotation.y, initial.y, lerpFactor);
             } else {
-                const swayFrequency = 0.4;
-                const swayAmplitude = 0.04;
-                const targetSwayY = initialRotation.y + Math.sin(now * swayFrequency) * swayAmplitude;
-                const targetSwayX = initialRotation.x + Math.cos(now * swayFrequency * 0.7) * (swayAmplitude * 0.6);
-                headBone.rotation.y = MathUtils.lerp(headBone.rotation.y, targetSwayY, lerpFactor);
-                headBone.rotation.x = MathUtils.lerp(headBone.rotation.x, targetSwayX, lerpFactor);
-                headBone.rotation.z = MathUtils.lerp(headBone.rotation.z, initialRotation.z, lerpFactor);
+                const targetBreathX = initial.x + Math.cos(now * breathFrequency * 1.2) * breathAmplitude;
+                const targetSwayY = initial.y - spineYDelta * 0.3; // Counter-rotate against lower spine
+                chestBone.rotation.x = MathUtils.lerp(chestBone.rotation.x, targetBreathX, lerpFactor);
+                chestBone.rotation.y = MathUtils.lerp(chestBone.rotation.y, targetSwayY, lerpFactor);
+            }
+        }
+    }
+
+    // Head follows the chest and adds its own subtle movements
+    if (headBone) {
+        const initial = initialBoneRotations.current.get(headBone.uuid);
+        if (initial) {
+            const lerpFactor = delta * 1.2;
+            const chestY = chestBone ? chestBone.rotation.y : initial.y;
+
+            if (pauseProcedural) {
+                headBone.rotation.x = MathUtils.lerp(headBone.rotation.x, initial.x, lerpFactor);
+                headBone.rotation.y = MathUtils.lerp(headBone.rotation.y, initial.y, lerpFactor);
+                headBone.rotation.z = MathUtils.lerp(headBone.rotation.z, initial.z, lerpFactor);
+            } else {
+                const headSwayY = chestY + Math.sin(now * swayFrequency * 1.2) * swayAmplitude * 0.6;
+                const headSwayX = initial.x + Math.cos(now * swayFrequency * 1.5) * swayAmplitude * 0.3;
+                const headSwayZ = initial.z + Math.sin(now * swayFrequency * 0.9) * swayAmplitude * 0.2;
+                
+                headBone.rotation.y = MathUtils.lerp(headBone.rotation.y, headSwayY, lerpFactor);
+                headBone.rotation.x = MathUtils.lerp(headBone.rotation.x, headSwayX, lerpFactor);
+                headBone.rotation.z = MathUtils.lerp(headBone.rotation.z, headSwayZ, lerpFactor);
+            }
+        }
+    }
+
+    // Subtle shoulder movement to break rigidity
+    if (leftShoulderBone && rightShoulderBone) {
+        const lInitial = initialBoneRotations.current.get(leftShoulderBone.uuid);
+        const rInitial = initialBoneRotations.current.get(rightShoulderBone.uuid);
+        if (lInitial && rInitial) {
+            const lerpFactor = delta * 0.5;
+            if (pauseProcedural) {
+                leftShoulderBone.rotation.x = MathUtils.lerp(leftShoulderBone.rotation.x, lInitial.x, lerpFactor);
+                rightShoulderBone.rotation.x = MathUtils.lerp(rightShoulderBone.rotation.x, rInitial.x, lerpFactor);
+            } else {
+                const shoulderFreq = 0.2;
+                const shoulderAmp = 0.03;
+                const targetLX = lInitial.x + Math.sin(now * shoulderFreq) * shoulderAmp;
+                const targetRX = rInitial.x + Math.cos(now * shoulderFreq * 0.9) * shoulderAmp;
+                leftShoulderBone.rotation.x = MathUtils.lerp(leftShoulderBone.rotation.x, targetLX, lerpFactor);
+                rightShoulderBone.rotation.x = MathUtils.lerp(rightShoulderBone.rotation.x, targetRX, lerpFactor);
             }
         }
     }

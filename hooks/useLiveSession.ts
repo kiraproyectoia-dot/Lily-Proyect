@@ -819,14 +819,15 @@ ${userStatements}`;
             // resolving the compiler errors on 'unknown' type.
             const history = conversationHistory.current.slice(-10)
                 .map((turn: unknown) => {
+                    // FIX: Replaced direct property access on `unknown` with a type cast to `Record<string, unknown>` after preliminary checks. This satisfies the TypeScript compiler while maintaining the intended runtime validation logic.
                     if (
                         turn &&
                         typeof turn === 'object' &&
                         'source' in turn &&
                         'text' in turn &&
-                        typeof turn.text === 'string' &&
-                        (turn.source === TranscriptSource.USER ||
-                         turn.source === TranscriptSource.MODEL)
+                        typeof (turn as Record<string, unknown>).text === 'string' &&
+                        ((turn as Record<string, unknown>).source === TranscriptSource.USER ||
+                         (turn as Record<string, unknown>).source === TranscriptSource.MODEL)
                     ) {
                         const transcript = turn as TranscriptEntry;
                         return {
