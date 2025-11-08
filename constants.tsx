@@ -1,5 +1,4 @@
 
-
 import React from 'react';
 
 // FIX: Manually adding standard SVG element types to the global JSX namespace.

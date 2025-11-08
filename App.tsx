@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useLiveSession } from './hooks/useLiveSession';
 import { Avatar } from './components/Avatar';
 import { Controls } from './components/Controls';
@@ -9,7 +9,7 @@ import { ChatInput } from './components/ChatInput';
 import { MemoryJournal } from './components/MemoryJournal';
 import { WelcomeGuide } from './components/WelcomeGuide';
 import { WelcomeBack } from './components/WelcomeBack';
-import { MediaPlayer } from './components/MediaPlayer'; // New component
+import { MediaPlayer } from './components/MediaPlayer';
 import { LILY_BACKGROUND_MEDIA_URL, TrashIcon } from './constants';
 
 // FIX: Manually adding standard HTML and SVG element types to the global JSX namespace.
@@ -34,7 +34,7 @@ declare global {
   }
 }
 
-const LILY_AVATAR_URL = 'https://models.readyplayer.me/68e7ada78074ade6a70196db.glb';
+const LILY_AVATAR_URL = 'https://models.readyplayer.me/68e7ada78074ade6a70196db.glb?morphTargets=ARKit,Oculus%20Visemes';
 
 const App: React.FC = () => {
   const [mediaUrl, setMediaUrl] = useState<string | null>(null);
@@ -48,6 +48,7 @@ const App: React.FC = () => {
     isPaused,
     currentGesture,
     startSession,
+    hardCloseSession,
     togglePause,
     toggleMute,
     error: sessionError,
@@ -82,7 +83,7 @@ const App: React.FC = () => {
     window.addEventListener('beforeunload', updateTimestamp);
     return () => window.removeEventListener('beforeunload', updateTimestamp);
   }, []);
-
+  
   const handleWelcomeClose = () => {
     localStorage.setItem('lily_has_seen_welcome_guide_v1', 'true');
     setShowWelcome(false);
@@ -161,13 +162,13 @@ const App: React.FC = () => {
         {isMemoryJournalVisible && <MemoryJournal onClose={toggleMemoryJournalVisibility} />}
 
         {sessionError && (
-            <footer className="p-2 text-center bg-red-800/50 text-red-300 text-sm border-t border-neutral-800 flex-shrink-0 z-10">
-                Error: {sessionError}
+            <footer className="p-2 text-center text-sm bg-red-900/50 border-t border-red-700/50">
+                <p>{sessionError}</p>
             </footer>
         )}
       </div>
     </div>
   );
 };
-
+// FIX: Add default export to make the component available for import in index.tsx.
 export default App;
