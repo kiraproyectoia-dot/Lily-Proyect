@@ -2,12 +2,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { SendIcon, AttachmentIcon } from '../constants';
 
-// FIX: Removed the local JSX type declaration. A single, consolidated declaration
-// has been moved to the root App.tsx component to resolve project-wide type conflicts.
-
 interface ChatInputProps {
     onSendMessage: (payload: { message: string; attachment?: { dataUrl: string; name: string; type: string; } }) => void;
     isReplying: boolean;
+    externalFile?: { dataUrl: string; name: string; type: string; } | null;
+    onExternalFileClear?: () => void;
 }
 
 const placeholders = [
@@ -17,11 +16,18 @@ const placeholders = [
     "¿Sabías que Lily puede cantar? Pídele una canción.",
   ];
 
-export const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isReplying }) => {
+export const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isReplying, externalFile, onExternalFileClear }) => {
     const [text, setText] = useState('');
     const [attachment, setAttachment] = useState<{ dataUrl: string; name: string; type: string; } | null>(null);
     const [placeholder, setPlaceholder] = useState(placeholders[0]);
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // Sync external dropped file to local state
+    useEffect(() => {
+        if (externalFile) {
+            setAttachment(externalFile);
+        }
+    }, [externalFile]);
 
     useEffect(() => {
         if (isReplying) {
@@ -54,13 +60,18 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isReplying 
         }
     };
 
+    const handleClearAttachment = () => {
+        setAttachment(null);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        if (onExternalFileClear) onExternalFileClear();
+    };
+
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if ((text.trim() || attachment) && !isReplying) {
             onSendMessage({ message: text, attachment: attachment || undefined });
             setText('');
-            setAttachment(null);
-            if(fileInputRef.current) fileInputRef.current.value = ''; // Reset file input
+            handleClearAttachment();
         }
     };
     
@@ -69,12 +80,15 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isReplying 
     return (
         <div className="flex-shrink-0 p-4 border-t border-neutral-800">
             {attachment && (
-                <div className="mb-2 flex items-center justify-between bg-neutral-800 p-2 rounded-lg text-sm">
+                <div className="mb-2 flex items-center justify-between bg-neutral-800 p-2 rounded-lg text-sm animate-fade-in">
                    <div className="flex items-center gap-2 overflow-hidden">
-                     <img src={attachment.dataUrl} alt="preview" className="w-8 h-8 rounded object-cover flex-shrink-0" />
+                     {attachment.type.startsWith('image/') 
+                        ? <img src={attachment.dataUrl} alt="preview" className="w-8 h-8 rounded object-cover flex-shrink-0" />
+                        : <div className="w-8 h-8 bg-purple-900 flex items-center justify-center rounded font-bold text-xs">DOC</div>
+                     }
                      <span className="text-gray-300 truncate">{attachment.name}</span>
                    </div>
-                   <button onClick={() => setAttachment(null)} className="text-gray-400 hover:text-white font-bold text-lg">&times;</button>
+                   <button onClick={handleClearAttachment} className="text-gray-400 hover:text-white font-bold text-lg px-2">&times;</button>
                 </div>
             )}
             <form onSubmit={handleSubmit} className={isReplying ? 'opacity-50' : ''}>
@@ -114,6 +128,10 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isReplying 
                     </button>
                 </div>
             </form>
+            <style>{`
+                @keyframes fade-in { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+                .animate-fade-in { animation: fade-in 0.3s ease-out; }
+            `}</style>
         </div>
     );
 };

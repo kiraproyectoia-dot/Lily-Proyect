@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 // FIX: Import ThreeElements for use in the global JSX namespace declaration.
 // This is necessary to make TypeScript aware of the custom elements used by react-three-fiber.
@@ -11,13 +12,10 @@ import { ChatInput } from './components/ChatInput';
 import { MemoryJournal } from './components/MemoryJournal';
 import { WelcomeGuide } from './components/WelcomeGuide';
 import { WelcomeBack } from './components/WelcomeBack';
-import { LILY_BACKGROUND_MEDIA_URL, TrashIcon, PlayIcon, PauseIcon } from './constants';
+import { LILY_BACKGROUND_MEDIA_URL, TrashIcon, PlayIcon, PauseIcon, AttachmentIcon } from './constants';
 import { MediaPlayer } from './components/MediaPlayer';
 
 // FIX: Consolidated all global JSX intrinsic element definitions into this single, project-wide declaration.
-// This resolves conflicts caused by multiple, incomplete declarations across different files.
-// It now includes all standard HTML/SVG elements used in the app and extends react-three-fiber's `ThreeElements`
-// to support custom elements like `<primitive>`, `<ambientLight>`, etc., in the Avatar component.
 declare global {
   namespace JSX {
     interface IntrinsicElements extends ThreeElements {
@@ -69,6 +67,7 @@ const App: React.FC = () => {
     isReplying,
     isPaused,
     currentGesture,
+    currentEmotion,
     isCameraActive,
     isScreenShareActive,
     startSession,
@@ -91,8 +90,11 @@ const App: React.FC = () => {
   const [showWelcomeBack, setShowWelcomeBack] = useState(false);
   const [mediaUrl, setMediaUrl] = useState<string | null>(null);
   const lastShownMediaUrl = useRef<string | null>(null);
+  
+  // Drag and Drop State
+  const [isDragActive, setIsDragActive] = useState(false);
+  const [droppedFile, setDroppedFile] = useState<{ dataUrl: string; name: string; type: string; } | null>(null);
 
-  // Effect to automatically play media links from Lily's responses
   useEffect(() => {
     if (isChatVisible) {
         const lastTranscript = transcripts[transcripts.length - 1];
@@ -114,14 +116,12 @@ const App: React.FC = () => {
   }, [transcripts, isChatVisible]);
 
   useEffect(() => {
-    // Welcome Guide for first-time users
     const hasSeenGuide = localStorage.getItem('lily_has_seen_welcome_guide_v1');
     if (!hasSeenGuide) {
       setShowWelcome(true);
-      return; // Don't show welcome back on the very first visit
+      return; 
     }
 
-    // Welcome Back for returning users
     const lastVisit = localStorage.getItem('lily_last_visit_timestamp');
     const now = Date.now();
     const TWELVE_HOURS = 12 * 60 * 60 * 1000;
@@ -149,12 +149,66 @@ const App: React.FC = () => {
 
   const isListening = isConnected && !isPaused;
 
+  // --- Drag & Drop Handlers ---
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isDragActive) setIsDragActive(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (isDragActive) setIsDragActive(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragActive(false);
+    
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+        const reader = new FileReader();
+        reader.onload = (loadEvent) => {
+            setDroppedFile({
+                dataUrl: loadEvent.target?.result as string,
+                name: file.name,
+                type: file.type,
+            });
+            setIsChatVisible(true); // Ensure chat is open to see the file
+        };
+        reader.readAsDataURL(file);
+    }
+  };
+
   return (
-    <div className="relative text-white min-h-screen flex flex-col items-center justify-center p-4 font-sans">
+    <div 
+      className="relative text-white min-h-screen flex flex-col items-center justify-center p-4 font-sans"
+      onDragOver={handleDragOver}
+    >
+       {/* Full Screen Drop Overlay */}
+       {isDragActive && (
+        <div 
+            className="absolute inset-0 z-50 bg-purple-900/80 backdrop-blur-sm flex flex-col items-center justify-center border-4 border-purple-400 border-dashed rounded-2xl m-4 pointer-events-none"
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop} // The main div handles drop, but this visual helps
+        >
+             <div className="animate-bounce mb-4 text-purple-200">
+                <AttachmentIcon />
+             </div>
+             <h2 className="text-3xl font-bold text-white">Suéltalo para analizar</h2>
+             <p className="text-purple-200 mt-2">PDF, Imágenes o Texto</p>
+        </div>
+       )}
+
       {showWelcome && <WelcomeGuide onClose={handleWelcomeClose} />}
       {showWelcomeBack && <WelcomeBack onClose={handleWelcomeBackClose} />}
       
-      <div className="relative w-full max-w-5xl h-[95vh] flex flex-col bg-neutral-900/70 rounded-2xl shadow-2xl backdrop-blur-lg border border-neutral-800 overflow-hidden">
+      <div 
+        className="relative w-full max-w-5xl h-[95vh] flex flex-col bg-neutral-900/70 rounded-2xl shadow-2xl backdrop-blur-lg border border-neutral-800 overflow-hidden"
+        onDrop={handleDrop} // Ensure drop works inside the container too
+      >
         <header className="flex items-center justify-between p-4 border-b border-neutral-800 flex-shrink-0 z-10">
           <div className="flex items-center gap-4">
               <div className="flex flex-col">
@@ -208,6 +262,7 @@ const App: React.FC = () => {
               modelUrl={LILY_AVATAR_URL}
               isSpeaking={isSpeaking}
               currentGesture={currentGesture}
+              currentEmotion={currentEmotion}
               getAudioVolume={getAudioVolume}
             />
           </div>
@@ -225,7 +280,14 @@ const App: React.FC = () => {
                   </button>
                </div>
                <TranscriptionDisplay transcripts={transcripts} isReplying={isReplying} isSpeaking={isSpeaking} saveImageMemory={saveImageMemory} />
-               {isConnected && <ChatInput onSendMessage={sendTextMessage} isReplying={isReplying} />}
+               {isConnected && (
+                   <ChatInput 
+                        onSendMessage={sendTextMessage} 
+                        isReplying={isReplying} 
+                        externalFile={droppedFile}
+                        onExternalFileClear={() => setDroppedFile(null)}
+                   />
+               )}
             </div>
           )}
         </main>
@@ -242,5 +304,4 @@ const App: React.FC = () => {
     </div>
   );
 };
-// FIX: Add default export to make the component available for import in index.tsx.
 export default App;

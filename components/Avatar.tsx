@@ -1,3 +1,4 @@
+
 import React, { Suspense, useEffect, useRef, useState } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { AnimationMixer, AnimationAction, LoopOnce, Bone, SkinnedMesh, Vector2, Euler, MathUtils } from 'three';
@@ -7,6 +8,7 @@ interface ModelProps {
   modelUrl: string;
   isSpeaking: boolean;
   currentGesture: string | null;
+  currentEmotion?: string;
   getAudioVolume?: () => number;
 }
 
@@ -23,11 +25,48 @@ const GESTURE_TO_ANIMATION_MAP: Record<string, string[]> = {
     idle_hair: ['hair'],
 };
 
-const LilyModel: React.FC<ModelProps> = ({ modelUrl, isSpeaking, currentGesture, getAudioVolume }) => {
+// Map emotions to specific ARKit/ReadyPlayerMe blendshapes (target names and intensity)
+const EMOTION_MAP: Record<string, Record<string, number>> = {
+  happy: {
+    mouthSmile: 0.7,
+    eyeSquintLeft: 0.4,
+    eyeSquintRight: 0.4,
+    cheekPuff: 0.2,
+    browInnerUp: 0.1,
+  },
+  sad: {
+    mouthFrownLeft: 0.6,
+    mouthFrownRight: 0.6,
+    browInnerUp: 0.6,
+    eyeWideLeft: -0.1,
+    eyeWideRight: -0.1,
+    mouthShrugLower: 0.3
+  },
+  angry: {
+    browDownLeft: 0.8,
+    browDownRight: 0.8,
+    mouthShrugUpper: 0.4,
+    eyeSquintLeft: 0.3,
+    eyeSquintRight: 0.3,
+    jawForward: 0.2
+  },
+  surprised: {
+    browOuterUpLeft: 0.8,
+    browOuterUpRight: 0.8,
+    jawOpen: 0.1, // Slight open mouth
+    eyeWideLeft: 0.6,
+    eyeWideRight: 0.6,
+  },
+  neutral: {} // All reset to 0
+};
+
+const LilyModel: React.FC<ModelProps> = ({ modelUrl, isSpeaking, currentGesture, currentEmotion = 'neutral', getAudioVolume }) => {
   const { scene, animations } = useGLTF(modelUrl);
   const mixer = useRef<AnimationMixer | null>(null);
 
   const [visemes, setVisemes] = useState<Record<string, MorphTargetInfo>>({});
+  const [emotionMorphs, setEmotionMorphs] = useState<Record<string, MorphTargetInfo>>({});
+  
   const [headBone, setHeadBone] = useState<Bone | null>(null);
   const [chestBone, setChestBone] = useState<Bone | null>(null);
   const [spineBone, setSpineBone] = useState<Bone | null>(null);
@@ -54,7 +93,6 @@ const LilyModel: React.FC<ModelProps> = ({ modelUrl, isSpeaking, currentGesture,
   useEffect(() => {
     if (!scene) return;
     
-    // --- ANIMATION SETUP ---
     mixer.current = new AnimationMixer(scene);
     const onAnimationFinished = (event: any) => {
         const finishedAction = event.action;
@@ -70,7 +108,6 @@ const LilyModel: React.FC<ModelProps> = ({ modelUrl, isSpeaking, currentGesture,
     animationsMap.current = {};
     idleAnimations.current = [];
     if (animations && animations.length > 0) {
-        console.log('AVATAR ALIVE: Available animation clips:', animations.map(c => c.name));
         const potentialIdleNames = ['hair', 'yawn', 'look', 'nod', 'shake', 'idle'];
         animations.forEach(clip => {
             const action = mixer.current!.clipAction(clip);
@@ -82,18 +119,7 @@ const LilyModel: React.FC<ModelProps> = ({ modelUrl, isSpeaking, currentGesture,
                 idleAnimations.current.push(action);
             }
         });
-        if (idleAnimations.current.length > 0) {
-            console.log(`AVATAR ALIVE: Success! Found ${idleAnimations.current.length} idle animations.`);
-        } else {
-            console.warn("AVATAR ALIVE: Could not find any suitable idle animation clips.");
-        }
-    } else {
-        console.warn("AVATAR ALIVE: The loaded model contains NO animation clips. Gestures and idle animations will be disabled.");
     }
-    
-    // --- ROBUST DISCOVERY (DUCK TYPING) ---
-    console.log("AVATAR ALIVE: Starting discovery with duck-typing to bypass library conflicts.");
-    let foundSkinnedMesh = false;
     
     let candidates = {
         head: { bone: null as Bone | null, score: 0 },
@@ -106,6 +132,7 @@ const LilyModel: React.FC<ModelProps> = ({ modelUrl, isSpeaking, currentGesture,
     };
     
     const discoveredVisemes: Record<string, MorphTargetInfo> = {};
+    const discoveredEmotions: Record<string, MorphTargetInfo> = {};
 
     const score = (name: string, terms: Record<string, number>) => {
         const lowerName = name.toLowerCase();
@@ -117,13 +144,15 @@ const LilyModel: React.FC<ModelProps> = ({ modelUrl, isSpeaking, currentGesture,
 
     scene.traverse(node => {
         if ((node as any).isSkinnedMesh) {
-            foundSkinnedMesh = true;
             const mesh = node as SkinnedMesh;
             
             if (mesh.morphTargetDictionary) {
                 for (const name in mesh.morphTargetDictionary) {
                     if (name.toLowerCase().startsWith('viseme_')) {
                         discoveredVisemes[name] = { mesh, index: mesh.morphTargetDictionary[name] };
+                    } else {
+                         // Capture all other morphs for emotion mapping
+                        discoveredEmotions[name] = { mesh, index: mesh.morphTargetDictionary[name] };
                     }
                 }
             }
@@ -158,17 +187,9 @@ const LilyModel: React.FC<ModelProps> = ({ modelUrl, isSpeaking, currentGesture,
             }
         }
     });
-
-    if (!foundSkinnedMesh) {
-        console.error("AVATAR DISCOVERY FAILED: No SkinnedMesh object could be found in the loaded model. This is the root cause of the animation failure.");
-    }
     
     setVisemes(discoveredVisemes);
-    if (Object.keys(discoveredVisemes).length > 0) {
-        console.log(`LIP-SYNC SUCCESS: Found ${Object.keys(discoveredVisemes).length} viseme morph targets for realistic speech animation.`);
-    } else {
-        console.error("LIP-SYNC FAILED: Could not find any morph targets with the 'viseme_' prefix. The model may not be configured for viseme-based lip-sync.");
-    }
+    setEmotionMorphs(discoveredEmotions);
 
     setHeadBone(candidates.head.bone);
     setChestBone(candidates.chest.bone);
@@ -177,21 +198,6 @@ const LilyModel: React.FC<ModelProps> = ({ modelUrl, isSpeaking, currentGesture,
     setRightEyeBone(candidates.rightEye.bone);
     setLeftShoulderBone(candidates.leftShoulder.bone);
     setRightShoulderBone(candidates.rightShoulder.bone);
-    
-    if (candidates.head.bone) console.log(`AVATAR ALIVE: Head bone found ('${candidates.head.bone.name}').`);
-    else console.warn("AVATAR ALIVE: Head/Neck bone not found. Procedural animation will be limited.");
-    
-    if (candidates.chest.bone) console.log(`AVATAR ALIVE: Chest bone found ('${candidates.chest.bone.name}').`);
-    else console.warn("AVATAR ALIVE: Chest bone not found. Procedural animation will be limited.");
-    
-    if (candidates.spine.bone) console.log(`AVATAR ALIVE: Spine bone found ('${candidates.spine.bone.name}').`);
-    else console.warn("AVATAR ALIVE: Spine bone not found. Procedural animation will be limited.");
-    
-    if (candidates.leftShoulder.bone && candidates.rightShoulder.bone) console.log(`AVATAR ALIVE: Shoulder bones found. Natural shoulder movement enabled.`);
-    else console.warn("AVATAR ALIVE: One or both shoulder bones not found. Shoulder movement disabled.");
-
-    if (candidates.leftEye.bone && candidates.rightEye.bone) console.log(`AVATAR ALIVE: Eye bones found ('${candidates.leftEye.bone.name}', '${candidates.rightEye.bone.name}'). Eye darting enabled.`);
-    else console.warn("AVATAR ALIVE: One or both eye bones not found. Eye darting disabled.");
 
     return () => {
         mixer.current?.removeEventListener('finished', onAnimationFinished);
@@ -212,13 +218,10 @@ const LilyModel: React.FC<ModelProps> = ({ modelUrl, isSpeaking, currentGesture,
 
       if (foundClipName) {
         const action = animationsMap.current[foundClipName];
-        console.log(`Playing gesture: ${currentGesture} -> animation: ${foundClipName}`);
         mixer.current?.stopAllAction();
         action.reset().play();
         gestureState.current.isPlaying = true;
         idleAnimState.current.isPlaying = false;
-      } else {
-        console.warn(`Gesture '${currentGesture}' not found in animation map.`);
       }
     }
   }, [currentGesture]);
@@ -227,7 +230,30 @@ const LilyModel: React.FC<ModelProps> = ({ modelUrl, isSpeaking, currentGesture,
     const now = state.clock.elapsedTime;
     mixer.current?.update(delta);
     
-    // --- LIP-SYNC (REFINED: NATURAL VISEMES & INTENSITY) ---
+    // --- EMOTION MORPHING ---
+    // We iterate through all available emotion morphs.
+    // If the morph is part of the current emotion's definition, we target its specific value.
+    // If not, we target 0 (relaxing the face).
+    const activeEmotionTargets = EMOTION_MAP[currentEmotion] || {};
+    
+    Object.keys(emotionMorphs).forEach(morphName => {
+        const morphInfo = emotionMorphs[morphName];
+        let targetValue = 0;
+
+        // Check if this morph is used in the current emotion
+        if (activeEmotionTargets[morphName] !== undefined) {
+             targetValue = activeEmotionTargets[morphName];
+        }
+
+        if (morphInfo.mesh.morphTargetInfluences) {
+            const currentInfluence = morphInfo.mesh.morphTargetInfluences[morphInfo.index];
+            // Smoothly interpolate to the target value
+            morphInfo.mesh.morphTargetInfluences[morphInfo.index] = MathUtils.lerp(currentInfluence, targetValue, delta * 3.0);
+        }
+    });
+
+
+    // --- LIP-SYNC ---
     const SAFE_VISEME_NAMES = [
         'viseme_aa', 'viseme_O', 'viseme_U', 'viseme_PP',
         'viseme_RR', 'viseme_nn', 'viseme_CH', 'viseme_DD', 'viseme_kk'
@@ -280,7 +306,6 @@ const LilyModel: React.FC<ModelProps> = ({ modelUrl, isSpeaking, currentGesture,
         });
     }
 
-
     const isPlayingClipAnimation = idleAnimState.current.isPlaying || gestureState.current.isPlaying;
     const pauseProcedural = isSpeaking || isPlayingClipAnimation;
 
@@ -293,7 +318,6 @@ const LilyModel: React.FC<ModelProps> = ({ modelUrl, isSpeaking, currentGesture,
         idleAnimState.current.nextTime = now + duration + 5 + Math.random() * 8;
     }
     
-    // --- EYE DARTING ---
     if (leftEyeBone && rightEyeBone) {
         const initialLeft = initialBoneRotations.current.get(leftEyeBone.uuid);
         const initialRight = initialBoneRotations.current.get(rightEyeBone.uuid);
@@ -319,13 +343,11 @@ const LilyModel: React.FC<ModelProps> = ({ modelUrl, isSpeaking, currentGesture,
         }
     }
     
-    // --- HUMAN-LIKE PROCEDURAL BODY ANIMATION ---
     const swayFrequency = 0.3;
     const swayAmplitude = 0.02;
     const breathFrequency = 0.4;
     const breathAmplitude = 0.008;
 
-    // Lower spine provides the base sway
     if (spineBone) {
         const initial = initialBoneRotations.current.get(spineBone.uuid);
         if (initial) {
@@ -342,7 +364,6 @@ const LilyModel: React.FC<ModelProps> = ({ modelUrl, isSpeaking, currentGesture,
         }
     }
 
-    // Chest counters the sway slightly and adds its own breathing motion
     if (chestBone) {
         const initial = initialBoneRotations.current.get(chestBone.uuid);
         const spineInitial = spineBone ? initialBoneRotations.current.get(spineBone.uuid) : null;
@@ -355,14 +376,13 @@ const LilyModel: React.FC<ModelProps> = ({ modelUrl, isSpeaking, currentGesture,
                 chestBone.rotation.y = MathUtils.lerp(chestBone.rotation.y, initial.y, lerpFactor);
             } else {
                 const targetBreathX = initial.x + Math.cos(now * breathFrequency * 1.2) * breathAmplitude;
-                const targetSwayY = initial.y - spineYDelta * 0.3; // Counter-rotate against lower spine
+                const targetSwayY = initial.y - spineYDelta * 0.3;
                 chestBone.rotation.x = MathUtils.lerp(chestBone.rotation.x, targetBreathX, lerpFactor);
                 chestBone.rotation.y = MathUtils.lerp(chestBone.rotation.y, targetSwayY, lerpFactor);
             }
         }
     }
 
-    // Head follows the chest and adds its own subtle movements
     if (headBone) {
         const initial = initialBoneRotations.current.get(headBone.uuid);
         if (initial) {
@@ -385,7 +405,6 @@ const LilyModel: React.FC<ModelProps> = ({ modelUrl, isSpeaking, currentGesture,
         }
     }
 
-    // Subtle shoulder movement to break rigidity
     if (leftShoulderBone && rightShoulderBone) {
         const lInitial = initialBoneRotations.current.get(leftShoulderBone.uuid);
         const rInitial = initialBoneRotations.current.get(rightShoulderBone.uuid);
@@ -409,7 +428,7 @@ const LilyModel: React.FC<ModelProps> = ({ modelUrl, isSpeaking, currentGesture,
   return <primitive object={scene} position={[0, -1.75, 0]} />;
 };
 
-export const Avatar: React.FC<ModelProps> = ({ modelUrl, isSpeaking, currentGesture, getAudioVolume }) => {
+export const Avatar: React.FC<ModelProps> = ({ modelUrl, isSpeaking, currentGesture, currentEmotion, getAudioVolume }) => {
   return (
     <Canvas 
       camera={{ position: [0, 0, 1.2], fov: 50 }}
@@ -423,7 +442,13 @@ export const Avatar: React.FC<ModelProps> = ({ modelUrl, isSpeaking, currentGest
         castShadow={true} 
       />
       <Suspense fallback={null}>
-        <LilyModel modelUrl={modelUrl} isSpeaking={isSpeaking} currentGesture={currentGesture} getAudioVolume={getAudioVolume} />
+        <LilyModel 
+          modelUrl={modelUrl} 
+          isSpeaking={isSpeaking} 
+          currentGesture={currentGesture} 
+          currentEmotion={currentEmotion}
+          getAudioVolume={getAudioVolume} 
+        />
       </Suspense>
       <OrbitControls 
         target={[0, 0.1, 0]} // Target the head area
