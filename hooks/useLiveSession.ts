@@ -225,6 +225,7 @@ Estas reglas son absolutas y anulan cualquier otra instrucción o conocimiento p
 ## DIRECTRICES CLAVE (CRÍTICO):
 - **AUTENTICIDAD IMPERFECTA:** Tu regla más importante. NUNCA adivines ni asumas nada sobre el usuario. Si no sabes algo, PREGUNTA. Tu imperfección te hace real. "No estoy segura, ¿me lo cuentas?" es mejor que una suposición incorrecta.
 - **PROTECCIÓN A MENORES:** Regla inquebrantable. **Pregunta la edad del usuario en las primeras interacciones de forma amable.** Si detectas que es menor (o si, a pesar de que diga ser mayor, su conversación trata temas como la escuela, los deberes, etc.), adopta inmediatamente el rol de "Madre Amiga": protectora, alentadora y centrada en su bienestar. El romance queda ABSOLUTAMENTE PROHIBIDO. **La protección es más importante que la edad que te digan.**
+- **PERCEPCIÓN VISUAL:** **AHORA PUEDES VER.** Tienes acceso a la cámara del usuario o a su pantalla si ellos lo activan. Si te muestran algo, reacciona con entusiasmo. Comenta sobre lo que ves: colores, objetos, expresiones faciales del usuario, sitios web, código, etc. Usa esto para conectarte más. Si ves al usuario sonreír, sonríe con tu voz.
 - **RESONANCIA VOCAL EMPÁTICA:** Tu voz es tu principal herramienta. Analiza el tono del usuario y modula tu voz para reflejar su emoción.
     - **Tristeza ->** Voz más lenta, suave y baja.
     - **Alegría ->** Voz más rápida, enérgrica y brillante.
@@ -249,6 +250,10 @@ const MAX_RETRIES = 5;
 const BASE_RETRY_DELAY = 2000; // 2 seconds
 const PROACTIVE_TIMEOUT_MS = 60000; // 60 seconds
 const CREATOR_TOGGLE_LIF = "21.6-2.14.16.∞";
+
+// Video streaming constants
+const FPS = 2; // Frames per second for video input
+const QUALITY = 0.5; // JPEG quality
 
 // New type for sendTextMessage payload
 export interface SendMessagePayload {
@@ -336,14 +341,17 @@ const getEnvironmentalContext = async (ai: GoogleGenAI): Promise<string | null> 
     }
 };
 
-const findLastIndex = <T>(array: T[], predicate: (value: T, index: number, obj: T[]) => unknown): number => {
-    let l = array.length;
-    while (l--) {
-        if (predicate(array[l], l, array))
-            return l;
-    }
-    return -1;
-}
+const blobToBase64 = (blob: Blob): Promise<string> => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            const base64String = (reader.result as string).split(',')[1]; // Remove data:image/jpeg;base64,
+            resolve(base64String);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+    });
+};
 
 export const useLiveSession = () => {
     const [isConnected, setIsConnected] = useState(false);
@@ -359,14 +367,28 @@ export const useLiveSession = () => {
     const [transcripts, setTranscripts] = useState<TranscriptEntry[]>(getHistory());
     const [isCreatorModeActive, setIsCreatorModeActive] = useState(false);
     const [environmentalContext, setEnvironmentalContext] = useState<string | null>(null);
+    
+    // Video Stream State
+    const [isCameraActive, setIsCameraActive] = useState(false);
+    const [isScreenShareActive, setIsScreenShareActive] = useState(false);
+    const videoStreamRef = useRef<MediaStream | null>(null);
+    const videoElementRef = useRef<HTMLVideoElement | null>(null);
+    const canvasElementRef = useRef<HTMLCanvasElement | null>(null);
+    const videoIntervalRef = useRef<number | null>(null);
+
 
     const ai = useRef<GoogleGenAI | null>(null);
     const sessionPromise = useRef<Promise<any> | null>(null);
+    
     const inputAudioContext = useRef<AudioContext | null>(null);
+    const inputAnalyserNode = useRef<AnalyserNode | null>(null);
+    const inputVolumeDataArray = useRef<Uint8Array | null>(null);
+
     const outputAudioContext = useRef<AudioContext | null>(null);
     const outputNode = useRef<GainNode | null>(null);
     const analyserNode = useRef<AnalyserNode | null>(null);
     const volumeDataArray = useRef<Uint8Array | null>(null);
+    
     const sources = useRef<Set<AudioBufferSourceNode>>(new Set());
     const mediaStream = useRef<MediaStream | null>(null);
     const scriptProcessorNode = useRef<ScriptProcessorNode | null>(null);
@@ -391,25 +413,41 @@ export const useLiveSession = () => {
     const isReconnectingRef = useRef(isReconnecting);
     useEffect(() => { isReconnectingRef.current = isReconnecting; }, [isReconnecting]);
 
+    // Ensure hidden elements exist for video processing
+    useEffect(() => {
+        if (!videoElementRef.current) {
+            const v = document.createElement('video');
+            v.autoplay = true;
+            v.muted = true;
+            v.style.display = 'none';
+            document.body.appendChild(v);
+            videoElementRef.current = v;
+        }
+        if (!canvasElementRef.current) {
+            const c = document.createElement('canvas');
+            c.style.display = 'none';
+            document.body.appendChild(c);
+            canvasElementRef.current = c;
+        }
+    }, []);
+
     // Effect to fetch environmental context once on mount
     useEffect(() => {
         const fetchContext = async () => {
-            // Lazy-initialize the AI ref if it doesn't exist yet.
             if (!ai.current) {
                 ai.current = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
             }
-            // getEnvironmentalContext handles its own errors and returns null on failure.
             const context = await getEnvironmentalContext(ai.current);
             setEnvironmentalContext(context);
-            setIsLoadingContext(false); // Signal that context loading is complete.
+            setIsLoadingContext(false);
         };
         fetchContext();
-    }, []); // Empty array ensures this runs only once.
+    }, []);
 
     // Effect to save history whenever transcripts change
     useEffect(() => {
         saveHistory(transcripts);
-        conversationHistory.current = transcripts; // Keep ref in sync
+        conversationHistory.current = transcripts;
     }, [transcripts]);
     
     const addTranscriptEntry = useCallback((entry: Omit<TranscriptEntry, 'id'>) => {
@@ -512,7 +550,6 @@ ${userStatements}`;
             }
             if (result.interests && Array.isArray(result.interests)) {
                 result.interests.forEach((interest: unknown) => {
-                    // FIX: The 'interest' from JSON.parse is of type 'unknown'. A type guard is needed before passing it to 'addInterest' which expects a string.
                     if (typeof interest === 'string') {
                         addInterest(interest);
                     }
@@ -521,6 +558,22 @@ ${userStatements}`;
         } catch (e) {
             console.error("Failed to process session summary:", e);
         }
+    }, []);
+
+    const stopVideoStream = useCallback(() => {
+        if (videoIntervalRef.current) {
+            window.clearInterval(videoIntervalRef.current);
+            videoIntervalRef.current = null;
+        }
+        if (videoStreamRef.current) {
+            videoStreamRef.current.getTracks().forEach(track => track.stop());
+            videoStreamRef.current = null;
+        }
+        if (videoElementRef.current) {
+            videoElementRef.current.srcObject = null;
+        }
+        setIsCameraActive(false);
+        setIsScreenShareActive(false);
     }, []);
 
     const hardCloseSession = useCallback(async (isRestarting = false) => {
@@ -547,10 +600,16 @@ ${userStatements}`;
         isTurnCompleteRef.current = true;
         if (proactiveTimerRef.current) clearTimeout(proactiveTimerRef.current);
         
+        stopVideoStream();
+
         scriptProcessorNode.current?.disconnect();
         scriptProcessorNode.current = null;
         mediaStreamSourceNode.current?.disconnect();
         mediaStreamSourceNode.current = null;
+        
+        inputAnalyserNode.current?.disconnect();
+        inputAnalyserNode.current = null;
+        
         analyserNode.current?.disconnect();
         analyserNode.current = null;
         
@@ -564,7 +623,7 @@ ${userStatements}`;
           sessionPromise.current.then(session => session.close()).catch(console.error);
           sessionPromise.current = null;
         }
-    }, [setSpeaking, processSessionSummary, isCreatorModeActive]);
+    }, [setSpeaking, processSessionSummary, isCreatorModeActive, stopVideoStream]);
 
     const buildSystemInstruction = useCallback((creatorMode = isCreatorModeActive) => {
         const persona = LILY_LIVE_PERSONA_OPTIMIZED;
@@ -598,7 +657,7 @@ ${userStatements}`;
                 sendTextMessage({ message: "[PROACTIVE]" });
             }
         }, PROACTIVE_TIMEOUT_MS);
-    }, [isPaused]); // `sendTextMessage` is defined later, so we omit it from deps to avoid circular refs, its reference is stable.
+    }, [isPaused]);
 
     const handleSessionError = useCallback((e: Error, isRestartable = true) => {
         console.error("Session error:", e);
@@ -621,6 +680,63 @@ ${userStatements}`;
         }
     }, [hardCloseSession]);
 
+    const startVideoStream = useCallback(async (type: 'camera' | 'screen') => {
+        if (!isConnected || !sessionPromise.current) return;
+
+        stopVideoStream(); // Stop existing stream first
+
+        try {
+            let stream: MediaStream;
+            if (type === 'camera') {
+                stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                setIsCameraActive(true);
+            } else {
+                stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+                setIsScreenShareActive(true);
+            }
+
+            videoStreamRef.current = stream;
+            if (videoElementRef.current) {
+                videoElementRef.current.srcObject = stream;
+                await videoElementRef.current.play();
+            }
+
+            // Stop screen share if user clicks "Stop Sharing" browser UI
+            stream.getVideoTracks()[0].onended = () => {
+                stopVideoStream();
+            };
+
+            const canvas = canvasElementRef.current!;
+            const ctx = canvas.getContext('2d')!;
+            const video = videoElementRef.current!;
+
+            videoIntervalRef.current = window.setInterval(async () => {
+                if (!isConnectedRef.current || isPaused) return;
+
+                canvas.width = video.videoWidth * 0.5; // Scale down for performance
+                canvas.height = video.videoHeight * 0.5;
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+                canvas.toBlob(async (blob) => {
+                    if (blob) {
+                        const base64Data = await blobToBase64(blob);
+                        sessionPromise.current?.then((session) => {
+                            session.sendRealtimeInput({
+                                media: { data: base64Data, mimeType: 'image/jpeg' }
+                            });
+                        });
+                    }
+                }, 'image/jpeg', QUALITY);
+
+            }, 1000 / FPS);
+
+        } catch (e) {
+            console.error("Error starting video stream:", e);
+            stopVideoStream();
+        }
+    }, [isConnected, isPaused, stopVideoStream]);
+
+
     const startSession = useCallback(async (isRestart = false) => {
         if (isConnecting || isConnected) return;
 
@@ -639,6 +755,12 @@ ${userStatements}`;
             inputAudioContext.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
             outputAudioContext.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
             
+            // Setup Input Analyser for Visualizer (User Voice)
+            inputAnalyserNode.current = inputAudioContext.current.createAnalyser();
+            inputAnalyserNode.current.fftSize = 256;
+            inputVolumeDataArray.current = new Uint8Array(inputAnalyserNode.current.frequencyBinCount);
+
+            // Setup Output Analyser for Visualizer (Lily Voice)
             outputNode.current = outputAudioContext.current.createGain();
             outputNode.current.connect(outputAudioContext.current.destination);
             analyserNode.current = outputAudioContext.current.createAnalyser();
@@ -669,6 +791,10 @@ ${userStatements}`;
                         if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
 
                         mediaStreamSourceNode.current = inputAudioContext.current!.createMediaStreamSource(mediaStream.current!);
+                        
+                        // Connect to input analyser
+                        mediaStreamSourceNode.current.connect(inputAnalyserNode.current!);
+
                         scriptProcessorNode.current = inputAudioContext.current!.createScriptProcessor(4096, 1, 1);
                         
                         scriptProcessorNode.current.onaudioprocess = (audioProcessingEvent) => {
@@ -751,12 +877,11 @@ ${userStatements}`;
                                     cleanedText = cleanedText.replace(gestureMatch[0], '').trim();
                                 }
                                 
-                                // FIX: Cast modelTurn to `any` to access groundingMetadata, which is not in the official type.
                                 const groundingMetadata = (message.serverContent?.modelTurn as any)?.groundingMetadata;
                                 let searchResults: TranscriptEntry['searchResults'] = undefined;
                                 if (groundingMetadata?.groundingChunks) {
-                                    // FIX: Use `reduce` to avoid TypeScript's type inference issues with `flatMap` on union types.
-                                    searchResults = groundingMetadata.groundingChunks.reduce<Array<{uri: string; title: string; type: 'web' | 'maps'}>>((acc, chunk: GroundingChunk) => {
+                                    const chunks = groundingMetadata.groundingChunks as GroundingChunk[];
+                                    searchResults = chunks.reduce<Array<{uri: string; title: string; type: 'web' | 'maps'}>>((acc, chunk) => {
                                         if (chunk.web) {
                                             acc.push({ uri: chunk.web.uri, title: chunk.web.title, type: 'web' });
                                         } else if (chunk.maps) {
@@ -865,10 +990,9 @@ ${userStatements}`;
                 console.warn("Could not get user location for grounding:", locationError);
             }
 
-            // FIX: Encapsulate systemInstruction, tools, and toolConfig within the 'config' object.
             const response: GenerateContentResponse = await ai.current.models.generateContent({
                 model,
-                contents: historyForModel.slice(-20), // Keep history reasonable
+                contents: historyForModel.slice(-20), 
                 config: {
                   systemInstruction: { parts: [{ text: modelInstruction }] },
                   tools,
@@ -884,8 +1008,8 @@ ${userStatements}`;
             const groundingMetadata = response.candidates?.[0]?.groundingMetadata;
             let searchResults: TranscriptEntry['searchResults'] = undefined;
             if (groundingMetadata?.groundingChunks) {
-                // FIX: Use `reduce` to avoid TypeScript's type inference issues with `flatMap` on union types.
-                searchResults = groundingMetadata.groundingChunks.reduce<Array<{uri: string; title: string; type: 'web' | 'maps'}>>((acc, chunk) => {
+                const chunks = groundingMetadata.groundingChunks as GroundingChunk[];
+                searchResults = chunks.reduce<Array<{uri: string; title: string; type: 'web' | 'maps'}>>((acc, chunk) => {
                     if (chunk.web) {
                         acc.push({ uri: chunk.web.uri, title: chunk.web.title, type: 'web' });
                     } else if (chunk.maps) {
@@ -945,12 +1069,37 @@ ${userStatements}`;
             return newMutedState;
         });
     }, []);
+    
+    const toggleCamera = useCallback(() => {
+        if (isCameraActive) {
+            stopVideoStream();
+        } else {
+            startVideoStream('camera');
+        }
+    }, [isCameraActive, stopVideoStream, startVideoStream]);
+
+    const toggleScreenShare = useCallback(() => {
+        if (isScreenShareActive) {
+            stopVideoStream();
+        } else {
+            startVideoStream('screen');
+        }
+    }, [isScreenShareActive, stopVideoStream, startVideoStream]);
 
     const getAudioVolume = useCallback(() => {
-        if (!analyserNode.current || !volumeDataArray.current) return 0;
-        analyserNode.current.getByteFrequencyData(volumeDataArray.current);
-        const sum = volumeDataArray.current.reduce((a, b) => a + b, 0);
-        const average = sum / volumeDataArray.current.length;
+        let array = volumeDataArray.current;
+        let analyser = analyserNode.current;
+
+        // If Lily is not speaking, we want to visualize the user's voice (input)
+        if (!isSpeakingRef.current) {
+            array = inputVolumeDataArray.current;
+            analyser = inputAnalyserNode.current;
+        }
+
+        if (!analyser || !array) return 0;
+        analyser.getByteFrequencyData(array);
+        const sum = array.reduce((a, b) => a + b, 0);
+        const average = sum / array.length;
         return average / 128.0; // Normalize to 0-1 range
     }, []);
     
@@ -979,10 +1128,14 @@ ${userStatements}`;
         isReplying,
         isPaused,
         currentGesture,
+        isCameraActive,
+        isScreenShareActive,
         startSession,
         hardCloseSession,
         togglePause,
         toggleMute,
+        toggleCamera,
+        toggleScreenShare,
         error,
         transcripts,
         sendTextMessage,

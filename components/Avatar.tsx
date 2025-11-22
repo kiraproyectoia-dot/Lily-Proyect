@@ -1,12 +1,7 @@
-
 import React, { Suspense, useEffect, useRef, useState } from 'react';
-import { Canvas, useFrame, ThreeElements } from '@react-three/fiber';
+import { Canvas, useFrame } from '@react-three/fiber';
 import { AnimationMixer, AnimationAction, LoopOnce, Bone, SkinnedMesh, Vector2, Euler, MathUtils } from 'three';
 import { useGLTF, OrbitControls } from '@react-three/drei';
-
-// FIX: Removed the local JSX type declaration. A single, consolidated declaration
-// has been moved to the root App.tsx component to resolve project-wide type conflicts
-// and ensure that types from react-three-fiber (like <primitive>) are globally available.
 
 interface ModelProps {
   modelUrl: string;

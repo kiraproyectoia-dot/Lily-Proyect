@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 // FIX: Import ThreeElements for use in the global JSX namespace declaration.
 // This is necessary to make TypeScript aware of the custom elements used by react-three-fiber.
@@ -12,7 +11,7 @@ import { ChatInput } from './components/ChatInput';
 import { MemoryJournal } from './components/MemoryJournal';
 import { WelcomeGuide } from './components/WelcomeGuide';
 import { WelcomeBack } from './components/WelcomeBack';
-import { LILY_BACKGROUND_MEDIA_URL, TrashIcon } from './constants';
+import { LILY_BACKGROUND_MEDIA_URL, TrashIcon, PlayIcon, PauseIcon } from './constants';
 import { MediaPlayer } from './components/MediaPlayer';
 
 // FIX: Consolidated all global JSX intrinsic element definitions into this single, project-wide declaration.
@@ -22,6 +21,11 @@ import { MediaPlayer } from './components/MediaPlayer';
 declare global {
   namespace JSX {
     interface IntrinsicElements extends ThreeElements {
+      // R3F elements (explicitly added to fix missing property errors in Avatar.tsx)
+      primitive: any;
+      ambientLight: any;
+      directionalLight: any;
+
       // HTML Elements
       a: React.DetailedHTMLProps<React.AnchorHTMLAttributes<HTMLAnchorElement>, HTMLAnchorElement>;
       button: React.DetailedHTMLProps<React.ButtonHTMLAttributes<HTMLButtonElement>, HTMLButtonElement>;
@@ -44,6 +48,7 @@ declare global {
       style: React.DetailedHTMLProps<React.StyleHTMLAttributes<HTMLStyleElement>, HTMLStyleElement>;
       ul: React.DetailedHTMLProps<React.HTMLAttributes<HTMLUListElement>, HTMLUListElement>;
       video: React.DetailedHTMLProps<React.VideoHTMLAttributes<HTMLVideoElement>, HTMLVideoElement>;
+      canvas: React.DetailedHTMLProps<React.CanvasHTMLAttributes<HTMLCanvasElement>, HTMLCanvasElement>;
       // SVG Elements
       svg: React.SVGProps<SVGSVGElement>;
       path: React.SVGProps<SVGPathElement>;
@@ -64,10 +69,14 @@ const App: React.FC = () => {
     isReplying,
     isPaused,
     currentGesture,
+    isCameraActive,
+    isScreenShareActive,
     startSession,
     hardCloseSession,
     togglePause,
     toggleMute,
+    toggleCamera,
+    toggleScreenShare,
     error: sessionError,
     transcripts,
     sendTextMessage,
@@ -147,26 +156,44 @@ const App: React.FC = () => {
       
       <div className="relative w-full max-w-5xl h-[95vh] flex flex-col bg-neutral-900/70 rounded-2xl shadow-2xl backdrop-blur-lg border border-neutral-800 overflow-hidden">
         <header className="flex items-center justify-between p-4 border-b border-neutral-800 flex-shrink-0 z-10">
-          <h1 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-500">
-            Lily
-          </h1>
-          <div className="flex items-center space-x-4">
-            <StatusIndicator isConnected={isConnected} isConnecting={isConnecting} isReconnecting={isReconnecting} />
-            <Controls
+          <div className="flex items-center gap-4">
+              <div className="flex flex-col">
+                <h1 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-500">
+                  Lily
+                </h1>
+                <StatusIndicator isConnected={isConnected} isConnecting={isConnecting} isReconnecting={isReconnecting} />
+              </div>
+              {isConnected && (
+                <button
+                  onClick={togglePause}
+                  className={`w-10 h-10 flex items-center justify-center rounded-full shadow-lg transition-all duration-300 ring-1 ring-white/20 ${
+                    isPaused ? 'bg-green-800 hover:bg-green-700' : 'bg-red-900 hover:bg-red-800'
+                  } ${isListening ? 'animate-listening-glow' : ''}`}
+                  aria-label={isPaused ? "Reanudar sesión" : "Pausar sesión"}
+                >
+                  {isPaused ? <PlayIcon /> : <PauseIcon />}
+                </button>
+              )}
+          </div>
+          <Controls
               isConnected={isConnected}
               isConnecting={isConnecting}
               isMuted={isMuted}
               isPaused={isPaused}
               isListening={isListening}
+              isChatVisible={isChatVisible}
+              isMemoryJournalVisible={isMemoryJournalVisible}
+              isCameraActive={isCameraActive}
+              isScreenShareActive={isScreenShareActive}
+              hideMainButton={isConnected}
               onStart={startSession}
               onPauseToggle={togglePause}
               onMuteToggle={toggleMute}
-              isChatVisible={isChatVisible}
               onChatToggle={toggleChatVisibility}
-              isMemoryJournalVisible={isMemoryJournalVisible}
               onMemoryJournalToggle={toggleMemoryJournalVisibility}
-            />
-          </div>
+              onCameraToggle={toggleCamera}
+              onScreenShareToggle={toggleScreenShare}
+          />
         </header>
         
         <main className="flex flex-col flex-grow overflow-hidden">
@@ -175,7 +202,7 @@ const App: React.FC = () => {
               key={LILY_BACKGROUND_MEDIA_URL}
               autoPlay loop muted playsInline
               src={LILY_BACKGROUND_MEDIA_URL}
-              className="absolute inset-0 w-full h-full object-cover opacity-50"
+              className="absolute inset-0 w-full h-full object-cover opacity-40"
             />
             <Avatar 
               modelUrl={LILY_AVATAR_URL}
