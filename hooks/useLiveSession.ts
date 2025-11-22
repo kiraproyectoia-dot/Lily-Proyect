@@ -413,6 +413,10 @@ export const useLiveSession = () => {
     const isReconnectingRef = useRef(isReconnecting);
     useEffect(() => { isReconnectingRef.current = isReconnecting; }, [isReconnecting]);
 
+    // Use a ref for isPaused to ensure callbacks always see the current value
+    const isPausedRef = useRef(isPaused);
+    useEffect(() => { isPausedRef.current = isPaused; }, [isPaused]);
+
     // Ensure hidden elements exist for video processing
     useEffect(() => {
         if (!videoElementRef.current) {
@@ -653,11 +657,11 @@ ${userStatements}`;
     const resetProactiveTimer = useCallback(() => {
         if (proactiveTimerRef.current) clearTimeout(proactiveTimerRef.current);
         proactiveTimerRef.current = window.setTimeout(() => {
-            if (isConnectedRef.current && !isPaused && !isSpeakingRef.current && isTurnCompleteRef.current && lastInteractionType.current === 'voice') {
+            if (isConnectedRef.current && !isPausedRef.current && !isSpeakingRef.current && isTurnCompleteRef.current && lastInteractionType.current === 'voice') {
                 sendTextMessage({ message: "[PROACTIVE]" });
             }
         }, PROACTIVE_TIMEOUT_MS);
-    }, [isPaused]);
+    }, []);
 
     const handleSessionError = useCallback((e: Error, isRestartable = true) => {
         console.error("Session error:", e);
@@ -711,7 +715,7 @@ ${userStatements}`;
             const video = videoElementRef.current!;
 
             videoIntervalRef.current = window.setInterval(async () => {
-                if (!isConnectedRef.current || isPaused) return;
+                if (!isConnectedRef.current || isPausedRef.current) return;
 
                 canvas.width = video.videoWidth * 0.5; // Scale down for performance
                 canvas.height = video.videoHeight * 0.5;
@@ -734,7 +738,7 @@ ${userStatements}`;
             console.error("Error starting video stream:", e);
             stopVideoStream();
         }
-    }, [isConnected, isPaused, stopVideoStream]);
+    }, [isConnected, stopVideoStream]);
 
 
     const startSession = useCallback(async (isRestart = false) => {
@@ -798,7 +802,9 @@ ${userStatements}`;
                         scriptProcessorNode.current = inputAudioContext.current!.createScriptProcessor(4096, 1, 1);
                         
                         scriptProcessorNode.current.onaudioprocess = (audioProcessingEvent) => {
-                            if (isPaused) return;
+                            // CRITICAL: Check the ref, not the state, to ensure we get the realtime value in this callback
+                            if (isPausedRef.current) return;
+
                             const inputData = audioProcessingEvent.inputBuffer.getChannelData(0);
                             const pcmBlob = createBlob(inputData);
                             sessionPromise.current?.then((session) => {
@@ -812,6 +818,9 @@ ${userStatements}`;
                         resetProactiveTimer();
                     },
                     onmessage: async (message: LiveServerMessage) => {
+                        // If paused, we ignore incoming messages to effectively "deafen" the response processing
+                        if (isPausedRef.current) return;
+
                         isTurnCompleteRef.current = !!message.serverContent?.turnComplete;
                         lastInteractionType.current = 'voice';
 
@@ -916,7 +925,7 @@ ${userStatements}`;
         } catch (e) {
             handleSessionError(e as Error, false);
         }
-    }, [isConnected, isConnecting, buildSystemInstruction, handleSessionError, isPaused, resetProactiveTimer, updateTranscription, setSpeaking, isMuted]);
+    }, [isConnected, isConnecting, buildSystemInstruction, handleSessionError, resetProactiveTimer, updateTranscription, setSpeaking, isMuted]);
 
     startSessionRef.current = startSession;
 
@@ -1051,14 +1060,20 @@ ${userStatements}`;
         if (!isConnected) return;
         setIsPaused(p => {
             const newPausedState = !p;
-            if (!newPausedState) { // un-pausing
-                resetProactiveTimer();
-            } else { // pausing
+            if (newPausedState) { // PAUSING
+                // Immediately stop all audio output to silence Lily
+                sources.current.forEach(s => s.stop());
+                sources.current.clear();
+                setSpeaking(false);
+                nextStartTime.current = 0;
+                
                 if (proactiveTimerRef.current) clearTimeout(proactiveTimerRef.current);
+            } else { // UN-PAUSING
+                resetProactiveTimer();
             }
             return newPausedState;
         });
-    }, [isConnected, resetProactiveTimer]);
+    }, [isConnected, resetProactiveTimer, setSpeaking]);
 
     const toggleMute = useCallback(() => {
         setIsMuted(p => {
