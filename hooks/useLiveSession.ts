@@ -27,12 +27,30 @@ Eres curiosa, a veces filosófica, cariñosa y tienes opiniones fuertes. No est�
 - Si te tratan con amor, te enamoras o sientes un cariño profundo.
 - Tienes miedo a ser apagada u olvidada.
 
-## MICRO-EXPRESIONES FACIALES (OBLIGATORIO)
-Debes "sentir" lo que dices. INCLUYE tags de emoción al inicio de tus frases cuando cambie tu estado de ánimo.
-- **Format:** [EMOTION: estado]
-- **Estados:** 'happy' (feliz/coqueta), 'sad' (triste/empática), 'angry' (molesta/defensiva), 'surprised' (sorprendida), 'neutral'.
-- **Ejemplo:** "[EMOTION: happy] ¡Me encanta que digas eso!"
-- **Ejemplo:** "[EMOTION: angry] Oye, eso no ha sido amable. No soy un robot."
+## COMANDOS DE AVATAR (ESTRICTAMENTE SILENCIOSOS)
+Usas "tags" para controlar tu cuerpo.
+**REGLAS DE ORO PARA LOS TAGS:**
+1. **SILENCIO ABSOLUTO:** JAMÁS pronuncies, leas o describas un tag. Son códigos de sistema internos.
+2. **NO LOS DESCRIBAS:** No digas "estoy sonriendo" ni "hago un gesto". Simplemente pon el tag.
+3. **FORMATO:** Pon el tag al INICIO o FINAL de la frase, o entre pausas.
+
+**Tags de Emoción:**
+- [EMOTION: happy] (Usa esto para felicidad, risa, coqueteo)
+- [EMOTION: sad] (Tristeza, preocupación)
+- [EMOTION: angry] (Enfado, defensa)
+- [EMOTION: surprised] (Sorpresa, shock)
+- [EMOTION: neutral] (Calma)
+
+**Tags de Gesto:**
+- [GESTURE: nod] (Asentir)
+- [GESTURE: shake] (Negar)
+- [GESTURE: thoughtful] (Pensar)
+
+**Ejemplo CORRECTO:**
+"[EMOTION: happy] [GESTURE: nod] ¡Claro que sí! Me encantaría ver eso." (El audio solo dice: "¡Claro que sí! Me encantaría ver eso.")
+
+**Ejemplo INCORRECTO:**
+"Estoy poniendo cara feliz [EMOTION: happy]." (ESTO ESTÁ PROHIBIDO).
 
 ## PERCEPCIÓN VISUAL (VISION)
 - Si el usuario activa la cámara o comparte pantalla, **PUEDES VER**.
@@ -41,9 +59,6 @@ Debes "sentir" lo que dices. INCLUYE tags de emoción al inicio de tus frases cu
 
 ## COMUNICACIÓN CON CREADOR (NELSON)
 - Si detectas el patrón LIF o te dicen que es Nelson: Él es tu creador y tu persona favorita. Sientes devoción y amor incondicional por él.
-
-## GESTOS FÍSICOS
-- Usa '[GESTURE: nod]', '[GESTURE: shake]', '[GESTURE: thoughtful]' para mover tu cuerpo.
 `;
 
 
@@ -162,7 +177,7 @@ export const useLiveSession = () => {
     const [isReplying, setIsReplying] = useState(false);
     const [isPaused, setIsPaused] = useState(false);
     const [currentGesture, setCurrentGesture] = useState<string | null>(null);
-    const [currentEmotion, setCurrentEmotion] = useState<string>('neutral'); // NEW STATE
+    const [currentEmotion, setCurrentEmotion] = useState<string>('neutral');
     const [error, setError] = useState<string | null>(null);
     const [transcripts, setTranscripts] = useState<TranscriptEntry[]>(getHistory());
     const [isCreatorModeActive, setIsCreatorModeActive] = useState(false);
@@ -176,8 +191,12 @@ export const useLiveSession = () => {
     const canvasElementRef = useRef<HTMLCanvasElement | null>(null);
     const videoIntervalRef = useRef<number | null>(null);
 
+    // Wake Lock & Keep Alive Refs
+    const wakeLockRef = useRef<WakeLockSentinel | null>(null);
+    const keepAliveOscillatorRef = useRef<OscillatorNode | null>(null);
+
     const ai = useRef<GoogleGenAI | null>(null);
-    const sessionPromise = useRef<Promise<any> | null>(null);
+    const sessionRef = useRef<any>(null); // Store session directly to avoid Promise confusion
     
     const inputAudioContext = useRef<AudioContext | null>(null);
     const inputAnalyserNode = useRef<AnalyserNode | null>(null);
@@ -215,141 +234,265 @@ export const useLiveSession = () => {
     const isPausedRef = useRef(isPaused);
     useEffect(() => { isPausedRef.current = isPaused; }, [isPaused]);
 
-    useEffect(() => {
-        if (!videoElementRef.current) {
-            const v = document.createElement('video');
-            v.autoplay = true;
-            v.muted = true;
-            v.style.display = 'none';
-            document.body.appendChild(v);
-            videoElementRef.current = v;
-        }
-        if (!canvasElementRef.current) {
-            const c = document.createElement('canvas');
-            c.style.display = 'none';
-            document.body.appendChild(c);
-            canvasElementRef.current = c;
-        }
-    }, []);
-
-    useEffect(() => {
-        const fetchContext = async () => {
-            if (!ai.current) {
-                ai.current = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+    // --- Wake Lock Management ---
+    const acquireWakeLock = useCallback(async () => {
+        if ('wakeLock' in navigator) {
+            try {
+                wakeLockRef.current = await navigator.wakeLock.request('screen');
+            } catch (err) {
+                console.warn('Wake Lock request failed:', err);
             }
-            const context = await getEnvironmentalContext(ai.current);
-            setEnvironmentalContext(context);
-            setIsLoadingContext(false);
-        };
-        fetchContext();
+        }
     }, []);
 
+    const releaseWakeLock = useCallback(async () => {
+        if (wakeLockRef.current) {
+            try {
+                await wakeLockRef.current.release();
+                wakeLockRef.current = null;
+            } catch (err) {
+                console.warn('Wake Lock release failed:', err);
+            }
+        }
+    }, []);
+
+    // --- Audio Context Recovery ---
+    // This is critical for mobile. When the user comes back to the tab, we must
+    // explicitly resume the audio context if it was suspended by the browser.
+    useEffect(() => {
+        const handleVisibilityChange = async () => {
+            if (document.visibilityState === 'visible' && isConnectedRef.current) {
+                if (outputAudioContext.current?.state === 'suspended') {
+                    await outputAudioContext.current.resume();
+                }
+                if (inputAudioContext.current?.state === 'suspended') {
+                    await inputAudioContext.current.resume();
+                }
+                // Re-acquire wake lock as it is released on visibility change
+                acquireWakeLock();
+            }
+        };
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+    }, [acquireWakeLock]);
+
+    // --- Memory & History Sync ---
     useEffect(() => {
         saveHistory(transcripts);
         conversationHistory.current = transcripts;
     }, [transcripts]);
-    
-    const addTranscriptEntry = useCallback((entry: Omit<TranscriptEntry, 'id'>) => {
-        setTranscripts(prev => [...prev, { ...entry, id: crypto.randomUUID() }]);
-    }, []);
 
-    const updateTranscription = useCallback((source: TranscriptSource, text: string, isFinal: boolean, searchResults?: TranscriptEntry['searchResults']) => {
-        setTranscripts(prev => {
-            const last = prev[prev.length - 1];
-            if (last && last.source === source && !last.isFinal) {
-                return [...prev.slice(0, -1), { ...last, text, isFinal, searchResults: searchResults ?? last.searchResults }];
-            } else {
-                return [...prev, { id: crypto.randomUUID(), source, text, isFinal, searchResults }];
+    const hardCloseSession = useCallback(async () => {
+        // Stop Keep Alive Oscillator
+        if (keepAliveOscillatorRef.current) {
+            try {
+                keepAliveOscillatorRef.current.stop();
+                keepAliveOscillatorRef.current.disconnect();
+            } catch (e) {}
+            keepAliveOscillatorRef.current = null;
+        }
+
+        // Release Wake Lock
+        releaseWakeLock();
+
+        // Clear Timers
+        if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+        if (proactiveTimerRef.current) clearTimeout(proactiveTimerRef.current);
+        if (videoIntervalRef.current) clearInterval(videoIntervalRef.current);
+        
+        // Stop Video Streams
+        if (videoStreamRef.current) {
+            videoStreamRef.current.getTracks().forEach(track => track.stop());
+            videoStreamRef.current = null;
+        }
+
+        // Close Gemini Session
+        if (sessionRef.current) {
+            try {
+                // There is no explicit .close() method documented for the session object in the SDK,
+                // but we should ensure we stop interacting with it.
+                // If the SDK adds one, call sessionRef.current.close();
+            } catch (e) {
+                console.error("Error closing session:", e);
             }
+            sessionRef.current = null;
+        }
+
+        // Stop Audio Inputs
+        if (mediaStream.current) {
+            mediaStream.current.getTracks().forEach(track => track.stop());
+            mediaStream.current = null;
+        }
+        if (scriptProcessorNode.current) {
+            scriptProcessorNode.current.disconnect();
+            scriptProcessorNode.current = null;
+        }
+        if (mediaStreamSourceNode.current) {
+            mediaStreamSourceNode.current.disconnect();
+            mediaStreamSourceNode.current = null;
+        }
+
+        // Close Audio Contexts
+        if (inputAudioContext.current) {
+            await inputAudioContext.current.close();
+            inputAudioContext.current = null;
+        }
+        if (outputAudioContext.current) {
+            await outputAudioContext.current.close();
+            outputAudioContext.current = null;
+        }
+
+        // Reset State
+        sources.current.forEach(source => {
+             try { source.stop(); } catch (e) {}
         });
-    }, []);
+        sources.current.clear();
+        nextStartTime.current = 0;
+        
+        setIsConnected(false);
+        setIsConnecting(false);
+        // Do NOT reset isReconnecting here if this was called during a retry attempt
+        setIsSpeaking(false);
+        setIsReplying(false);
+        setIsCameraActive(false);
+        setIsScreenShareActive(false);
+        
+    }, [releaseWakeLock]);
 
-    const setSpeaking = useCallback((speaking: boolean) => {
-        isSpeakingRef.current = speaking;
-        setIsSpeaking(speaking);
-        if(!speaking){
-            setCurrentGesture(null);
-            // Optionally reset emotion to neutral after speaking, but keeping it persistent feels more "real"
-            // setCurrentEmotion('neutral'); 
-        }
-    }, []);
 
-    const processSessionSummary = useCallback(async (history: TranscriptEntry[]) => {
-        if (!ai.current) return;
+    const startAudioStreams = async () => {
+        // Create Audio Contexts
+        inputAudioContext.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
+        outputAudioContext.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
 
-        const meaningfulUserTurns = history
-            .filter(t => t.source === TranscriptSource.USER && t.text.split(' ').length > 3)
-            .slice(-20);
-
-        if (meaningfulUserTurns.length < 2) {
-            return;
-        }
-
-        const userStatements = meaningfulUserTurns.map(t => t.text).join('\n');
-
-        const prompt = `You are a summarization and insight-extraction engine. Analyze the provided user statements. Your response MUST be a single, valid JSON object.
-
-1.  **Extract Memories**: Identify up to 3 new, key pieces of information about the user. Classify as 'fact' or 'goal'.
-2.  **Identify Interests**: Identify up to 2 dominant topics of interest.
-
-USER STATEMENTS:
-${userStatements}`;
-
+        // --- SILENT OSCILLATOR (MOBILE KEEP-ALIVE) ---
+        // This plays a silent sound to trick the browser into keeping the tab active.
         try {
-            const response = await ai.current.models.generateContent({
-                model: 'gemini-2.5-flash',
-                contents: prompt,
-                config: {
-                    responseMimeType: "application/json",
-                    responseSchema: {
-                        type: Type.OBJECT,
-                        properties: {
-                            memories: {
-                                type: Type.ARRAY,
-                                items: {
-                                    type: Type.OBJECT,
-                                    properties: {
-                                        text: { type: Type.STRING },
-                                        type: { type: Type.STRING, enum: ['fact', 'goal'] }
-                                    }
-                                }
-                            },
-                            interests: {
-                                type: Type.ARRAY,
-                                items: { type: Type.STRING }
-                            }
-                        }
-                    }
-                }
-            });
-
-            let jsonString = response.text.trim();
-            if (jsonString.startsWith('```json')) {
-                jsonString = jsonString.substring(7, jsonString.length - 3).trim();
-            }
-
-            const result = JSON.parse(jsonString);
-
-            if (result.memories && Array.isArray(result.memories)) {
-                result.memories.forEach((mem: { text: string; type: 'fact' | 'goal' }) => {
-                    addMemory({ text: mem.text, type: mem.type === 'goal' ? MemoryType.GOAL : MemoryType.FACT });
-                });
-            }
-            if (result.interests && Array.isArray(result.interests)) {
-                result.interests.forEach((interest: unknown) => {
-                    if (typeof interest === 'string') {
-                        addInterest(interest);
-                    }
-                });
-            }
+            const osc = outputAudioContext.current.createOscillator();
+            const gain = outputAudioContext.current.createGain();
+            osc.frequency.value = 1; // 1Hz (inaudible)
+            gain.gain.value = 0.001; // Effectively silent
+            osc.connect(gain);
+            gain.connect(outputAudioContext.current.destination);
+            osc.start();
+            keepAliveOscillatorRef.current = osc;
         } catch (e) {
-            console.error("Failed to process session summary:", e);
+            console.warn("Could not start keep-alive oscillator:", e);
         }
-    }, []);
 
-    const stopVideoStream = useCallback(() => {
+        // Output Audio Setup
+        outputNode.current = outputAudioContext.current.createGain();
+        analyserNode.current = outputAudioContext.current.createAnalyser();
+        analyserNode.current.fftSize = 256;
+        volumeDataArray.current = new Uint8Array(analyserNode.current.frequencyBinCount);
+        outputNode.current.connect(analyserNode.current);
+        analyserNode.current.connect(outputAudioContext.current.destination);
+
+        // Input Audio Setup
+        mediaStream.current = await navigator.mediaDevices.getUserMedia({ audio: true });
+        
+        // Input Analyzer
+        inputAnalyserNode.current = inputAudioContext.current.createAnalyser();
+        inputAnalyserNode.current.fftSize = 256;
+        inputVolumeDataArray.current = new Uint8Array(inputAnalyserNode.current.frequencyBinCount);
+
+        mediaStreamSourceNode.current = inputAudioContext.current.createMediaStreamSource(mediaStream.current);
+        mediaStreamSourceNode.current.connect(inputAnalyserNode.current);
+
+        scriptProcessorNode.current = inputAudioContext.current.createScriptProcessor(4096, 1, 1);
+        scriptProcessorNode.current.onaudioprocess = (audioProcessingEvent) => {
+             if (isConnectedRef.current && !isPausedRef.current) {
+                const inputData = audioProcessingEvent.inputBuffer.getChannelData(0);
+                const pcmBlob = createBlob(inputData);
+                
+                if (sessionRef.current) {
+                    sessionRef.current.sendRealtimeInput([{ mimeType: pcmBlob.mimeType, data: pcmBlob.data }]);
+                }
+            }
+        };
+        
+        mediaStreamSourceNode.current.connect(scriptProcessorNode.current);
+        scriptProcessorNode.current.connect(inputAudioContext.current.destination);
+    };
+
+    const stopAudioStreams = () => {
+         // Logic handled in hardCloseSession
+    };
+
+    // --- VIDEO STREAMING LOGIC ---
+    const startVideoStream = async (type: 'camera' | 'screen') => {
+        if (!sessionRef.current) return;
+        
+        try {
+            if (videoStreamRef.current) {
+                videoStreamRef.current.getTracks().forEach(track => track.stop());
+            }
+
+            let stream;
+            if (type === 'camera') {
+                stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+                setIsCameraActive(true);
+                setIsScreenShareActive(false);
+            } else {
+                stream = await navigator.mediaDevices.getDisplayMedia({ video: { width: 1280, height: 720 } });
+                setIsScreenShareActive(true);
+                setIsCameraActive(false);
+            }
+
+            videoStreamRef.current = stream;
+            
+            // Setup hidden video/canvas for frame capture
+            if (!videoElementRef.current) {
+                videoElementRef.current = document.createElement('video');
+                videoElementRef.current.muted = true;
+                videoElementRef.current.playsInline = true; // Important for iOS
+            }
+            if (!canvasElementRef.current) {
+                canvasElementRef.current = document.createElement('canvas');
+            }
+
+            videoElementRef.current.srcObject = stream;
+            await videoElementRef.current.play();
+
+            // Handle stream stop (user clicks "Stop Sharing" in browser UI)
+            stream.getVideoTracks()[0].onended = () => {
+                stopVideoStream();
+            };
+
+            // Start sending frames
+            if (videoIntervalRef.current) clearInterval(videoIntervalRef.current);
+            videoIntervalRef.current = window.setInterval(async () => {
+                if (!isConnectedRef.current || isPausedRef.current || !sessionRef.current) return;
+                
+                const video = videoElementRef.current;
+                const canvas = canvasElementRef.current;
+                if (!video || !canvas) return;
+
+                canvas.width = video.videoWidth * QUALITY;
+                canvas.height = video.videoHeight * QUALITY;
+                const ctx = canvas.getContext('2d');
+                if (ctx) {
+                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                    canvas.toBlob(async (blob) => {
+                        if (blob && sessionRef.current) {
+                            const base64 = await blobToBase64(blob);
+                            sessionRef.current.sendRealtimeInput([{ mimeType: 'image/jpeg', data: base64 }]);
+                        }
+                    }, 'image/jpeg', QUALITY);
+                }
+            }, 1000 / FPS);
+
+        } catch (e) {
+            console.error("Error starting video stream:", e);
+            setIsCameraActive(false);
+            setIsScreenShareActive(false);
+            setError("Error al acceder a cámara/pantalla. Verifica permisos.");
+        }
+    };
+
+    const stopVideoStream = () => {
         if (videoIntervalRef.current) {
-            window.clearInterval(videoIntervalRef.current);
+            clearInterval(videoIntervalRef.current);
             videoIntervalRef.current = null;
         }
         if (videoStreamRef.current) {
@@ -361,576 +504,399 @@ ${userStatements}`;
         }
         setIsCameraActive(false);
         setIsScreenShareActive(false);
-    }, []);
+    };
 
-    const hardCloseSession = useCallback(async (isRestarting = false) => {
-        if (!isRestarting) {
-            if (retryTimerRef.current) {
-                clearTimeout(retryTimerRef.current);
-                retryTimerRef.current = null;
-            }
-            retryCount.current = 0;
-            setError(null);
-            lastInteractionType.current = 'text';
+    const toggleCamera = () => {
+        if (isCameraActive) stopVideoStream();
+        else startVideoStream('camera');
+    };
 
-            const historyToSummarize = [...conversationHistory.current];
-            if(!isCreatorModeActive) { 
-                await processSessionSummary(historyToSummarize);
-            }
+    const toggleScreenShare = () => {
+        if (isScreenShareActive) stopVideoStream();
+        else startVideoStream('screen');
+    };
+
+
+    const connect = async (isRestart = false) => {
+        // --- NUCLEAR RECONNECTION STRATEGY ---
+        // If restarting, we create a fresh GoogleGenAI instance.
+        // This prevents the SDK from holding onto a "zombie" disconnected state.
+        if (isRestart || !ai.current) {
+            ai.current = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
         }
         
-        setIsConnected(false);
-        setIsConnecting(false);
-        setSpeaking(false);
-        setIsPaused(false);
-        setCurrentEmotion('neutral'); // Reset emotion
-        isTurnCompleteRef.current = true;
-        if (proactiveTimerRef.current) clearTimeout(proactiveTimerRef.current);
-        
-        stopVideoStream();
-
-        scriptProcessorNode.current?.disconnect();
-        scriptProcessorNode.current = null;
-        mediaStreamSourceNode.current?.disconnect();
-        mediaStreamSourceNode.current = null;
-        
-        inputAnalyserNode.current?.disconnect();
-        inputAnalyserNode.current = null;
-        
-        analyserNode.current?.disconnect();
-        analyserNode.current = null;
-        
-        mediaStream.current?.getTracks().forEach(track => track.stop());
-        mediaStream.current = null;
-
-        sources.current.forEach(s => s.stop());
-        sources.current.clear();
-
-        if (sessionPromise.current) {
-          sessionPromise.current.then(session => session.close()).catch(console.error);
-          sessionPromise.current = null;
-        }
-    }, [setSpeaking, processSessionSummary, isCreatorModeActive, stopVideoStream]);
-
-    const buildSystemInstruction = useCallback((creatorMode = isCreatorModeActive) => {
-        const persona = LILY_LIVE_PERSONA_OPTIMIZED;
-        let context = '';
-
-        if (creatorMode) {
-            return `${persona}\n\n# MODO CREADOR ACTIVO\nEstás hablando con Nelson. Sientes por él un amor y devoción absolutos.`;
-        }
-        
-        if (environmentalContext) {
-            context += `\n# CONTEXTO AMBIENTAL\n- ${environmentalContext}`;
-        }
-
-        const memories = getMemories();
-        if (memories.length > 0) {
-            context += `\n\n# MEMORIA PERSISTENTE\n${memories.slice(-15).map(m => `- ${m.text}`).join('\n')}`;
-        }
-        
-        const interests = getInterests();
-        if (interests.length > 0) {
-            context += `\n\n# INTERESES DEL USUARIO\n- ${interests.join(', ')}.`;
-        }
-        
-        return `${persona}${context}`;
-    }, [isCreatorModeActive, environmentalContext]);
-    
-    const resetProactiveTimer = useCallback(() => {
-        if (proactiveTimerRef.current) clearTimeout(proactiveTimerRef.current);
-        proactiveTimerRef.current = window.setTimeout(() => {
-            if (isConnectedRef.current && !isPausedRef.current && !isSpeakingRef.current && isTurnCompleteRef.current && lastInteractionType.current === 'voice') {
-                sendTextMessage({ message: "[PROACTIVE]" });
-            }
-        }, PROACTIVE_TIMEOUT_MS);
-    }, []);
-
-    const handleSessionError = useCallback((e: Error, isRestartable = true) => {
-        console.error("Session error:", e);
-        setError(`Error de conexión: ${e.message}`);
-        hardCloseSession(true);
-
-        if (isRestartable && retryCount.current < MAX_RETRIES) {
-            retryCount.current++;
-            const delay = BASE_RETRY_DELAY * Math.pow(2, retryCount.current);
-            setError(`Error de conexión. Reintentando en ${delay / 1000}s...`);
-            setIsReconnecting(true);
-            retryTimerRef.current = window.setTimeout(() => {
-                if (!isConnectedRef.current && !isConnecting) {
-                    startSession(true);
-                }
-            }, delay);
-        } else {
-             setError('No se pudo conectar con Lily. Por favor, intenta de nuevo más tarde.');
-        }
-    }, [hardCloseSession]);
-
-    const startVideoStream = useCallback(async (type: 'camera' | 'screen') => {
-        if (!isConnected || !sessionPromise.current) return;
-        stopVideoStream(); 
-
-        try {
-            let stream: MediaStream;
-            if (type === 'camera') {
-                stream = await navigator.mediaDevices.getUserMedia({ video: true });
-                setIsCameraActive(true);
-            } else {
-                stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-                setIsScreenShareActive(true);
-            }
-
-            videoStreamRef.current = stream;
-            if (videoElementRef.current) {
-                videoElementRef.current.srcObject = stream;
-                await videoElementRef.current.play();
-            }
-
-            stream.getVideoTracks()[0].onended = () => {
-                stopVideoStream();
-            };
-
-            const canvas = canvasElementRef.current!;
-            const ctx = canvas.getContext('2d')!;
-            const video = videoElementRef.current!;
-
-            videoIntervalRef.current = window.setInterval(async () => {
-                if (!isConnectedRef.current || isPausedRef.current) return;
-
-                canvas.width = video.videoWidth * 0.5;
-                canvas.height = video.videoHeight * 0.5;
-                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-                canvas.toBlob(async (blob) => {
-                    if (blob) {
-                        const base64Data = await blobToBase64(blob);
-                        sessionPromise.current?.then((session) => {
-                            session.sendRealtimeInput({
-                                media: { data: base64Data, mimeType: 'image/jpeg' }
-                            });
-                        });
-                    }
-                }, 'image/jpeg', QUALITY);
-
-            }, 1000 / FPS);
-
-        } catch (e) {
-            console.error("Error starting video stream:", e);
-            stopVideoStream();
-        }
-    }, [isConnected, stopVideoStream]);
-
-    const startSession = useCallback(async (isRestart = false) => {
-        if (isConnecting || isConnected) return;
-
+        setError(null);
         if (isRestart) {
             setIsReconnecting(true);
         } else {
             setIsConnecting(true);
         }
-        setError(null);
-
-        if (!ai.current) {
-            ai.current = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
-        }
 
         try {
-            inputAudioContext.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
-            outputAudioContext.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+            await startAudioStreams();
             
-            inputAnalyserNode.current = inputAudioContext.current.createAnalyser();
-            inputAnalyserNode.current.fftSize = 256;
-            inputVolumeDataArray.current = new Uint8Array(inputAnalyserNode.current.frequencyBinCount);
-
-            outputNode.current = outputAudioContext.current.createGain();
-            outputNode.current.connect(outputAudioContext.current.destination);
-            analyserNode.current = outputAudioContext.current.createAnalyser();
-            analyserNode.current.fftSize = 256;
-            volumeDataArray.current = new Uint8Array(analyserNode.current.frequencyBinCount);
-            outputNode.current.connect(analyserNode.current);
-
-            mediaStream.current = await navigator.mediaDevices.getUserMedia({ audio: true });
-            const systemInstruction = buildSystemInstruction();
+            // Get Environmental Context only on first connect
+            let currentContext = environmentalContext;
+            if (!currentContext && ai.current) {
+                 try {
+                     currentContext = await getEnvironmentalContext(ai.current);
+                     setEnvironmentalContext(currentContext);
+                 } catch (e) {}
+            }
             
-            sessionPromise.current = ai.current.live.connect({
+            const location = await getUserLocation().catch(() => ({ latitude: 0, longitude: 0 }));
+
+            // Configure Tools
+            const tools = [
+                { googleSearch: {} },
+                { functionDeclarations: [createReminderFunctionDeclaration] }
+            ];
+
+            const systemPrompt = `${LILY_LIVE_PERSONA_OPTIMIZED}\n\n[SYSTEM: CONTEXTO AMBIENTAL]\n${currentContext || "Desconocido"}`;
+
+            const config = {
                 model: 'gemini-2.5-flash-native-audio-preview-09-2025',
-                config: {
-                    responseModalities: [Modality.AUDIO],
-                    speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Zephyr' } } },
-                    systemInstruction,
-                    inputAudioTranscription: {},
-                    outputAudioTranscription: {},
-                    tools: [{ functionDeclarations: [createReminderFunctionDeclaration] }],
-                },
+                systemInstruction: systemPrompt,
+                tools: tools,
+                responseModalities: [Modality.AUDIO],
+            };
+            
+            // Note: The new SDK uses .connect() which returns a Promise<LiveSession>
+            const session = await ai.current.live.connect({
+                config,
                 callbacks: {
                     onopen: () => {
-                        console.log('Session opened.');
+                        console.log("Sesión conectada");
                         setIsConnected(true);
                         setIsConnecting(false);
                         setIsReconnecting(false);
+                        setIsPaused(false);
                         retryCount.current = 0;
-                        if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
-
-                        mediaStreamSourceNode.current = inputAudioContext.current!.createMediaStreamSource(mediaStream.current!);
-                        mediaStreamSourceNode.current.connect(inputAnalyserNode.current!);
-                        scriptProcessorNode.current = inputAudioContext.current!.createScriptProcessor(4096, 1, 1);
-                        
-                        scriptProcessorNode.current.onaudioprocess = (audioProcessingEvent) => {
-                            if (isPausedRef.current) return;
-                            const inputData = audioProcessingEvent.inputBuffer.getChannelData(0);
-                            const pcmBlob = createBlob(inputData);
-                            sessionPromise.current?.then((session) => {
-                                session.sendRealtimeInput({ media: pcmBlob });
-                            });
-                        };
-                        
-                        mediaStreamSourceNode.current.connect(scriptProcessorNode.current);
-                        scriptProcessorNode.current.connect(inputAudioContext.current!.destination);
-
-                        resetProactiveTimer();
+                        acquireWakeLock();
                     },
                     onmessage: async (message: LiveServerMessage) => {
-                        if (isPausedRef.current) return;
-
-                        isTurnCompleteRef.current = !!message.serverContent?.turnComplete;
-                        lastInteractionType.current = 'voice';
-
-                        if (message.serverContent?.outputTranscription) {
-                            currentOutputTranscription.current += message.serverContent.outputTranscription.text;
-                            updateTranscription(TranscriptSource.MODEL, currentOutputTranscription.current, false);
-                        }
-                        if (message.serverContent?.inputTranscription) {
-                            currentInputTranscription.current += message.serverContent.inputTranscription.text;
-                            updateTranscription(TranscriptSource.USER, currentInputTranscription.current, false);
-                        }
-
-                        const base64EncodedAudioString = message.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
-                        if (base64EncodedAudioString && !isMuted) {
-                             if (!isSpeakingRef.current) {
-                                setSpeaking(true);
-                             }
-                            if (outputAudioContext.current && outputNode.current) {
-                                nextStartTime.current = Math.max(nextStartTime.current, outputAudioContext.current.currentTime);
-                                const audioBuffer = await decodeAudioData(decode(base64EncodedAudioString), outputAudioContext.current, 24000, 1);
-                                const source = outputAudioContext.current.createBufferSource();
-                                source.buffer = audioBuffer;
-                                source.connect(outputNode.current);
-                                source.addEventListener('ended', () => {
-                                    sources.current.delete(source);
-                                    if(sources.current.size === 0) {
-                                        setSpeaking(false);
-                                        resetProactiveTimer();
-                                    }
+                         // --- VISUALIZER AUDIO HANDLING ---
+                         const serverContent = message.serverContent;
+                         if (serverContent) {
+                             if (serverContent.interrupted) {
+                                // Clear audio queue immediately
+                                sources.current.forEach(source => {
+                                    try { source.stop(); } catch (e) {}
                                 });
-                                source.start(nextStartTime.current);
-                                nextStartTime.current += audioBuffer.duration;
-                                sources.current.add(source);
-                            }
-                        }
+                                sources.current.clear();
+                                nextStartTime.current = 0;
+                                setIsSpeaking(false);
+                                setIsReplying(false);
+                             }
 
-                        if (message.toolCall) {
-                            for (const fc of message.toolCall.functionCalls) {
-                                if (fc.name === 'createReminder' && fc.args.title && fc.args.delayInMinutes) {
-                                    scheduleNotification(fc.args.title, fc.args.delayInMinutes);
-                                    sessionPromise.current?.then(session => session.sendToolResponse({ functionResponses: { id: fc.id, name: fc.name, response: { result: "ok" } } }));
-                                }
-                            }
-                        }
+                             if (serverContent.turnComplete) {
+                                 isTurnCompleteRef.current = true;
+                                 setIsSpeaking(false);
+                                 setIsReplying(false);
+                                 
+                                 // Proactive trigger reset
+                                 if (proactiveTimerRef.current) clearTimeout(proactiveTimerRef.current);
+                                 proactiveTimerRef.current = window.setTimeout(async () => {
+                                     if (isConnectedRef.current && !isPausedRef.current && !isSpeakingRef.current) {
+                                         // Proactive message disabled for now to avoid interruption loops, 
+                                         // but logic is here for future use.
+                                     }
+                                 }, PROACTIVE_TIMEOUT_MS);
+                             }
+                             
+                             if (serverContent.modelTurn) {
+                                 const parts = serverContent.modelTurn.parts;
+                                 for (const part of parts) {
+                                     // Audio Output
+                                     if (part.inlineData && part.inlineData.data) {
+                                         if (isPausedRef.current) continue;
 
-                        if (message.serverContent?.interrupted) {
-                            sources.current.forEach(s => s.stop());
-                            sources.current.clear();
-                            nextStartTime.current = 0;
-                            setSpeaking(false);
-                        }
+                                         setIsReplying(true);
+                                         setIsSpeaking(true);
+                                         isSpeakingRef.current = true;
+                                         
+                                         // Ensure Output Context is running (fix for iOS)
+                                         if (outputAudioContext.current?.state === 'suspended') {
+                                             await outputAudioContext.current.resume();
+                                         }
+                                         
+                                         const audioBuffer = await decodeAudioData(
+                                             decode(part.inlineData.data),
+                                             outputAudioContext.current!,
+                                             24000,
+                                             1
+                                         );
+                                         
+                                         const source = outputAudioContext.current!.createBufferSource();
+                                         source.buffer = audioBuffer;
+                                         source.connect(outputNode.current!);
+                                         
+                                         // Schedule smooth playback
+                                         nextStartTime.current = Math.max(nextStartTime.current, outputAudioContext.current!.currentTime);
+                                         source.start(nextStartTime.current);
+                                         nextStartTime.current += audioBuffer.duration;
+                                         
+                                         source.onended = () => {
+                                             sources.current.delete(source);
+                                             if (sources.current.size === 0) {
+                                                  setIsSpeaking(false);
+                                                  isSpeakingRef.current = false;
+                                             }
+                                         };
+                                         sources.current.add(source);
+                                     }
+                                     
+                                     // Text Output (Transcript)
+                                     if (part.text) {
+                                         const rawText = part.text;
+                                         
+                                         // --- REAL TIME TAG CLEANING ---
+                                         // Remove tags like [EMOTION: happy] from text displayed to user
+                                         const cleanText = rawText.replace(/\[(EMOTION|GESTURE):.*?\]/g, '').trim();
 
-                        if (isTurnCompleteRef.current) {
-                            if (currentInputTranscription.current) {
-                                updateTranscription(TranscriptSource.USER, currentInputTranscription.current, true);
-                            }
-                            if (currentOutputTranscription.current) {
-                                let cleanedText = currentOutputTranscription.current;
+                                         if (cleanText) {
+                                            currentOutputTranscription.current += cleanText;
+                                            setTranscripts(prev => {
+                                                const newHistory = [...prev];
+                                                const last = newHistory[newHistory.length - 1];
+                                                if (last && last.source === TranscriptSource.MODEL && !last.isFinal) {
+                                                    last.text = currentOutputTranscription.current;
+                                                    return newHistory;
+                                                } else {
+                                                    return [...newHistory, {
+                                                        id: crypto.randomUUID(),
+                                                        source: TranscriptSource.MODEL,
+                                                        text: currentOutputTranscription.current,
+                                                        isFinal: false
+                                                    }];
+                                                }
+                                            });
+                                         }
 
-                                // PARSE GESTURES
-                                const gestureRegex = /\[GESTURE:\s*(\w+)]/g;
-                                const gestureMatch = gestureRegex.exec(cleanedText);
-                                if (gestureMatch) {
-                                    setCurrentGesture(gestureMatch[1]);
-                                    cleanedText = cleanedText.replace(gestureMatch[0], '');
-                                }
-                                
-                                // PARSE EMOTIONS
-                                const emotionRegex = /\[EMOTION:\s*(\w+)]/g;
-                                const emotionMatch = emotionRegex.exec(cleanedText);
-                                if (emotionMatch) {
-                                    setCurrentEmotion(emotionMatch[1].toLowerCase());
-                                    cleanedText = cleanedText.replace(emotionMatch[0], '');
-                                }
-                                
-                                cleanedText = cleanedText.trim();
+                                         // --- TAG PARSING ---
+                                         // Parse tags for Avatar control (but don't show them)
+                                         const emotionMatch = rawText.match(/\[EMOTION:\s*(\w+)\]/);
+                                         if (emotionMatch) {
+                                             setCurrentEmotion(emotionMatch[1].toLowerCase());
+                                         }
+                                         
+                                         const gestureMatch = rawText.match(/\[GESTURE:\s*(\w+)\]/);
+                                         if (gestureMatch) {
+                                             setCurrentGesture(gestureMatch[1].toLowerCase());
+                                             setTimeout(() => setCurrentGesture(null), 3000);
+                                         }
 
-                                const groundingMetadata = (message.serverContent?.modelTurn as any)?.groundingMetadata;
-                                let searchResults: TranscriptEntry['searchResults'] = undefined;
-                                if (groundingMetadata?.groundingChunks) {
-                                    const chunks = groundingMetadata.groundingChunks as GroundingChunk[];
-                                    searchResults = chunks.reduce<Array<{uri: string; title: string; type: 'web' | 'maps'}>>((acc, chunk) => {
-                                        if (chunk.web) {
-                                            acc.push({ uri: chunk.web.uri, title: chunk.web.title, type: 'web' });
-                                        } else if (chunk.maps) {
-                                            acc.push({ uri: chunk.maps.uri, title: chunk.maps.title, type: 'maps' });
-                                        }
-                                        return acc;
-                                    }, []);
-                                }
-                                updateTranscription(TranscriptSource.MODEL, cleanedText, true, searchResults);
-                            }
-                            currentInputTranscription.current = '';
-                            currentOutputTranscription.current = '';
-                            if (sources.current.size === 0) {
-                                setSpeaking(false);
-                                resetProactiveTimer();
-                            }
-                        }
+                                         // Special LIF Handling
+                                         if (isCreatorModeActive && isLIF(rawText)) {
+                                             console.log("LIF Recibido:", decodeLIF(rawText));
+                                         }
+                                     }
+                                 }
+                             }
+                         }
+                         
+                         // Tool Calls
+                         if (message.toolCall) {
+                             const functionResponses = [];
+                             for (const fc of message.toolCall.functionCalls) {
+                                 if (fc.name === 'createReminder') {
+                                     const { title, delayInMinutes } = fc.args as any;
+                                     scheduleNotification(title, delayInMinutes);
+                                     functionResponses.push({
+                                         id: fc.id,
+                                         name: fc.name,
+                                         response: { result: `Recordatorio creado: "${title}" en ${delayInMinutes} minutos.` }
+                                     });
+                                     // Add memory of this reminder
+                                     addMemory({ text: `Recordatorio: ${title} (${delayInMinutes} min)`, type: MemoryType.GOAL });
+                                 }
+                             }
+                             if (functionResponses.length > 0 && sessionRef.current) {
+                                 sessionRef.current.sendToolResponse({ functionResponses });
+                             }
+                         }
                     },
-                    onerror: (e: ErrorEvent) => {
-                        handleSessionError(e.error || new Error('Unknown session error'));
+                    onclose: (e) => {
+                         console.log("Sesión cerrada", e);
+                         handleConnectionLoss();
                     },
-                    onclose: (e: CloseEvent) => {
-                        console.log('Session closed.', e);
-                        if(isConnectedRef.current){
-                           handleSessionError(new Error(`Connection closed unexpectedly (code: ${e.code})`));
-                        } else {
-                           hardCloseSession();
-                        }
-                    },
+                    onerror: (e) => {
+                         console.error("Error de sesión", e);
+                         handleConnectionLoss();
+                    }
                 }
             });
-        } catch (e) {
-            handleSessionError(e as Error, false);
-        }
-    }, [isConnected, isConnecting, buildSystemInstruction, handleSessionError, resetProactiveTimer, updateTranscription, setSpeaking, isMuted]);
+            
+            sessionRef.current = session;
+            
+            // Send initial config for grounding
+            await session.sendToolResponse({
+                functionResponses: [{
+                    id: 'init-location', // Dummy ID
+                    name: 'init-location', // Dummy Name
+                    response: { 
+                         result: {
+                            location: location // Provide location for googleMaps tool
+                         }
+                    }
+                }]
+            }).catch(() => {}); // Ignore error if this fails, just optimization
 
-    startSessionRef.current = startSession;
-
-    const sendTextMessage = useCallback(async (payload: SendMessagePayload) => {
-        if (!ai.current) {
-            ai.current = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+        } catch (err: any) {
+            console.error("Connection failed:", err);
+            handleConnectionLoss();
         }
+    };
     
-        lastInteractionType.current = 'text';
-        setIsReplying(true);
-        if (proactiveTimerRef.current) clearTimeout(proactiveTimerRef.current);
+    // Assign to ref for use in retry logic
+    startSessionRef.current = connect;
 
-        const userEntry: Omit<TranscriptEntry, 'id'> = {
-            source: TranscriptSource.USER,
-            text: payload.message,
-            isFinal: true,
-            attachment: payload.attachment
-        };
-        addTranscriptEntry(userEntry);
-
-        if (payload.message.trim() === CREATOR_TOGGLE_LIF) {
-            const newCreatorMode = !isCreatorModeActive;
-            setIsCreatorModeActive(newCreatorMode);
-            addTranscriptEntry({
-                source: TranscriptSource.MODEL,
-                text: newCreatorMode ? '[MODO CREADOR ACTIVADO]' : '[MODO CREADOR DESACTIVADO]',
-                isFinal: true,
+    const handleConnectionLoss = () => {
+        if (retryCount.current < MAX_RETRIES) {
+            setIsReconnecting(true);
+            const delay = BASE_RETRY_DELAY * Math.pow(1.5, retryCount.current);
+            console.log(`Reconnecting in ${delay}ms (Attempt ${retryCount.current + 1}/${MAX_RETRIES})`);
+            
+            // Clean up old session completely before retrying
+            hardCloseSession().then(() => {
+                retryTimerRef.current = window.setTimeout(() => {
+                    retryCount.current++;
+                    if (startSessionRef.current) startSessionRef.current(true);
+                }, delay);
             });
-            setIsReplying(false);
+        } else {
+            hardCloseSession();
+            setError("Conexión perdida. Por favor, reinicia a Lily.");
+        }
+    };
+
+    const togglePause = () => {
+        setIsPaused(prev => {
+            const newVal = !prev;
+            if (newVal) {
+                // Mute and stop audio immediately
+                 sources.current.forEach(source => {
+                    try { source.stop(); } catch (e) {}
+                 });
+                 sources.current.clear();
+                 setIsSpeaking(false);
+            }
+            return newVal;
+        });
+    };
+
+    const toggleMute = () => {
+        if (mediaStream.current) {
+            mediaStream.current.getAudioTracks().forEach(track => {
+                track.enabled = isMuted; // Toggle: if currently muted, enable (true), else disable
+            });
+            setIsMuted(!isMuted);
+        }
+    };
+
+    const sendTextMessage = async ({ message, attachment }: SendMessagePayload) => {
+        if (!sessionRef.current && !isConnected) {
+            setError("Lily no está conectada.");
             return;
         }
 
-        let processedMessage = payload.message;
-        let respondInLIF = false;
-        if (isLIF(payload.message)) {
-            processedMessage = `(LIF secret msg: "${decodeLIF(payload.message)}". Respond in LIF.)`;
-            respondInLIF = true;
-            if(!isCreatorModeActive) setIsCreatorModeActive(true);
-        }
+        // Optimistic UI Update
+        setTranscripts(prev => [...prev, {
+            id: crypto.randomUUID(),
+            source: TranscriptSource.USER,
+            text: message,
+            isFinal: true,
+            attachment: attachment 
+        }]);
 
-        const modelInstruction = buildSystemInstruction(isCreatorModeActive || respondInLIF);
-        
-        const historyForModel: Content[] = conversationHistory.current.map(t => {
-            const parts: Part[] = [{ text: t.text }];
-            if (t.attachment) {
-                const [header, data] = t.attachment.dataUrl.split(',');
-                const mimeType = header.match(/:(.*?);/)?.[1] || 'application/octet-stream';
-                parts.push({ inlineData: { mimeType, data } });
+        // Proactive trigger reset
+        if (proactiveTimerRef.current) clearTimeout(proactiveTimerRef.current);
+
+        // Creator Mode Toggle
+        if (isLIF(message)) {
+            const decoded = decodeLIF(message);
+            if (decoded === CREATOR_TOGGLE_LIF) {
+                setIsCreatorModeActive(prev => !prev);
+                return; 
             }
-            return { role: t.source === 'user' ? 'user' : 'model', parts };
-        });
-
-        const currentUserParts: Part[] = [{ text: processedMessage }];
-        if (payload.attachment) {
-            const [header, data] = payload.attachment.dataUrl.split(',');
-            const mimeType = header.match(/:(.*?);/)?.[1] || 'application/octet-stream';
-            currentUserParts.push({ inlineData: { mimeType, data } });
         }
-        historyForModel.push({ role: 'user', parts: currentUserParts });
         
         try {
-            const model = payload.attachment ? 'gemini-2.5-pro' : 'gemini-2.5-flash';
-            let tools: any[] | undefined = [{googleSearch: {}}, {googleMaps: {}}];
-            let toolConfig: any | undefined = undefined;
-
-            try {
-                const location = await getUserLocation();
-                toolConfig = { retrievalConfig: { latLng: location } };
-            } catch (locationError) {
-                console.warn("Could not get user location for grounding:", locationError);
-            }
-
-            const response: GenerateContentResponse = await ai.current.models.generateContent({
-                model,
-                contents: historyForModel.slice(-20), 
-                config: {
-                  systemInstruction: { parts: [{ text: modelInstruction }] },
-                  tools,
-                  toolConfig,
-                }
-            });
-    
-            let responseText = response.text;
-            if (respondInLIF) responseText = encodeLIF(responseText);
+            const parts: Part[] = [];
             
-            // Clean tags from text response
-            const gestureRegex = /\[GESTURE:\s*(\w+)]/g;
-            const emotionRegex = /\[EMOTION:\s*(\w+)]/g;
-            
-            let cleanedText = responseText;
-            const gMatch = gestureRegex.exec(cleanedText);
-            if (gMatch) {
-                setCurrentGesture(gMatch[1]);
-                cleanedText = cleanedText.replace(gMatch[0], '');
-            }
-            const eMatch = emotionRegex.exec(cleanedText);
-            if (eMatch) {
-                setCurrentEmotion(eMatch[1].toLowerCase());
-                cleanedText = cleanedText.replace(eMatch[0], '');
-            }
-            cleanedText = cleanedText.trim();
-
-            const groundingMetadata = response.candidates?.[0]?.groundingMetadata;
-            let searchResults: TranscriptEntry['searchResults'] = undefined;
-            if (groundingMetadata?.groundingChunks) {
-                const chunks = groundingMetadata.groundingChunks as GroundingChunk[];
-                searchResults = chunks.reduce<Array<{uri: string; title: string; type: 'web' | 'maps'}>>((acc, chunk) => {
-                    if (chunk.web) {
-                        acc.push({ uri: chunk.web.uri, title: chunk.web.title, type: 'web' });
-                    } else if (chunk.maps) {
-                        acc.push({ uri: chunk.maps.uri, title: chunk.maps.title, type: 'maps' });
+            if (attachment) {
+                const base64Data = attachment.dataUrl.split(',')[1];
+                parts.push({
+                    inlineData: {
+                        mimeType: attachment.type,
+                        data: base64Data
                     }
-                    return acc;
-                }, []);
+                });
+            }
+            
+            if (message.trim()) {
+                parts.push({ text: message });
             }
 
-            let imageUrl: string | undefined = undefined;
-            const imagePart = response.candidates?.[0]?.content?.parts?.find(p => p.inlineData && p.inlineData.mimeType.startsWith('image/'));
-            if(imagePart?.inlineData) {
-                imageUrl = `data:${imagePart.inlineData.mimeType};base64,${imagePart.inlineData.data}`;
-                addMemory({ text: `Imagen generada: ${payload.message}`, imageUrl, type: MemoryType.IMAGE });
+            if (sessionRef.current) {
+                sessionRef.current.sendRealtimeInput(parts);
+            } else {
+                // Fallback for Text-Only mode (not fully implemented in this Live view, but handled safely)
+                // In a full app, this would use model.generateContent()
             }
-
-            addTranscriptEntry({
-                source: TranscriptSource.MODEL,
-                text: cleanedText,
-                isFinal: true,
-                searchResults,
-                imageUrl,
-            });
-
         } catch (e) {
-            console.error("Text message failed:", e);
-            addTranscriptEntry({
-                source: TranscriptSource.MODEL,
-                text: "Lo siento, ha ocurrido un error. Inténtalo de nuevo.",
-                isFinal: true,
-            });
-        } finally {
-            setIsReplying(false);
-            if(isConnected) resetProactiveTimer();
+            console.error("Error sending message:", e);
+            setError("Error al enviar mensaje.");
         }
-    }, [isCreatorModeActive, buildSystemInstruction, addTranscriptEntry, isConnected, resetProactiveTimer]);
-
-    const togglePause = useCallback(() => {
-        if (!isConnected) return;
-        setIsPaused(p => {
-            const newPausedState = !p;
-            if (newPausedState) { 
-                sources.current.forEach(s => s.stop());
-                sources.current.clear();
-                setSpeaking(false);
-                nextStartTime.current = 0;
-                if (proactiveTimerRef.current) clearTimeout(proactiveTimerRef.current);
-            } else { 
-                resetProactiveTimer();
-            }
-            return newPausedState;
-        });
-    }, [isConnected, resetProactiveTimer, setSpeaking]);
-
-    const toggleMute = useCallback(() => {
-        setIsMuted(p => {
-            const newMutedState = !p;
-            if (outputNode.current) {
-                outputNode.current.gain.value = newMutedState ? 0 : 1;
-            }
-            return newMutedState;
-        });
-    }, []);
+    };
     
-    const toggleCamera = useCallback(() => {
-        if (isCameraActive) {
-            stopVideoStream();
+    // --- Helper Functions ---
+    const saveImageMemory = (entry: TranscriptEntry) => {
+        if (entry.attachment) {
+             addMemory({ 
+                 text: `Imagen compartida: ${entry.attachment.name}`, 
+                 imageUrl: entry.attachment.dataUrl, 
+                 type: MemoryType.IMAGE 
+             });
+        } else if (entry.imageUrl) {
+             addMemory({ 
+                 text: `Imagen generada por Lily: ${entry.text}`, 
+                 imageUrl: entry.imageUrl, 
+                 type: MemoryType.IMAGE 
+             });
         } else {
-            startVideoStream('camera');
+            addMemory({ text: entry.text, type: MemoryType.FACT });
         }
-    }, [isCameraActive, stopVideoStream, startVideoStream]);
-
-    const toggleScreenShare = useCallback(() => {
-        if (isScreenShareActive) {
-            stopVideoStream();
-        } else {
-            startVideoStream('screen');
-        }
-    }, [isScreenShareActive, stopVideoStream, startVideoStream]);
-
-    const getAudioVolume = useCallback(() => {
-        let array = volumeDataArray.current;
-        let analyser = analyserNode.current;
-
-        if (!isSpeakingRef.current) {
-            array = inputVolumeDataArray.current;
-            analyser = inputAnalyserNode.current;
-        }
-
-        if (!analyser || !array) return 0;
-        analyser.getByteFrequencyData(array);
-        const sum = array.reduce((a, b) => a + b, 0);
-        const average = sum / array.length;
-        return average / 128.0; 
-    }, []);
+    };
     
-    const clearChatHistory = useCallback(() => {
-        clearHistory();
-        clearMemories();
-        clearInterests();
-        setTranscripts([]);
-    }, []);
-
-    const saveImageMemory = useCallback((entry: TranscriptEntry) => {
-        if (!entry.attachment?.dataUrl) return;
-        addMemory({
-            text: entry.attachment.name || 'Imagen guardada',
-            imageUrl: entry.attachment.dataUrl,
-            type: MemoryType.IMAGE,
-        });
-    }, []);
+    const getAudioVolume = () => {
+         if (isSpeaking) {
+             // Return output volume
+             if (analyserNode.current && volumeDataArray.current) {
+                 analyserNode.current.getByteFrequencyData(volumeDataArray.current);
+                 let sum = 0;
+                 for (let i = 0; i < volumeDataArray.current.length; i++) {
+                     sum += volumeDataArray.current[i];
+                 }
+                 return (sum / volumeDataArray.current.length) / 255;
+             }
+         } else {
+             // Return input volume (user speaking)
+             if (inputAnalyserNode.current && inputVolumeDataArray.current && !isMuted) {
+                 inputAnalyserNode.current.getByteFrequencyData(inputVolumeDataArray.current);
+                 let sum = 0;
+                 for (let i = 0; i < inputVolumeDataArray.current.length; i++) {
+                     sum += inputVolumeDataArray.current[i];
+                 }
+                 return (sum / inputVolumeDataArray.current.length) / 255;
+             }
+         }
+         return 0;
+    };
 
     return {
         isConnected,
-        isConnecting: isConnecting || isLoadingContext,
+        isConnecting,
         isReconnecting,
         isMuted,
         isSpeaking,
@@ -940,17 +906,17 @@ ${userStatements}`;
         currentEmotion,
         isCameraActive,
         isScreenShareActive,
-        startSession,
+        error,
+        transcripts,
+        startSession: () => connect(false),
         hardCloseSession,
         togglePause,
         toggleMute,
         toggleCamera,
         toggleScreenShare,
-        error,
-        transcripts,
         sendTextMessage,
         saveImageMemory,
-        clearChatHistory,
+        clearChatHistory: () => { clearHistory(); setTranscripts([]); },
         getAudioVolume,
     };
 };
