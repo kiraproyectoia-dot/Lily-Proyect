@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { ChatIcon, JournalIcon, MicOnIcon, SendIcon } from '../constants';
+import { ChatIcon, JournalIcon, MicOnIcon, VideoCameraIcon } from '../constants';
 
 // FIX: Removed the local JSX type declaration. A single, consolidated declaration
 // has been moved to the root App.tsx component to resolve project-wide type conflicts.
@@ -33,15 +33,21 @@ export const WelcomeGuide: React.FC<WelcomeGuideProps> = ({ onClose }) => {
             </span>
           </li>
           <li className="flex items-start gap-3">
+            <span className="text-purple-400 mt-1"><VideoCameraIcon /></span>
+            <span>
+              <strong>Visión y Colaboración:</strong> Activa la cámara para mostrarme tu entorno o comparte tu pantalla para que veamos contenido juntos.
+            </span>
+          </li>
+          <li className="flex items-start gap-3">
             <span className="text-purple-400 mt-1"><ChatIcon /></span>
             <span>
-                <strong>Chat de texto y más:</strong> Usa el chat para enviarme mensajes, adjuntar imágenes o pedirme que busque algo en la web. También puedo generar imágenes si me lo pides.
+                <strong>Chat Multimodal:</strong> Escribe mensajes, adjunta archivos PDF/Imágenes o arrástralos a la ventana para que los analice.
             </span>
           </li>
           <li className="flex items-start gap-3">
             <span className="text-purple-400 mt-1"><JournalIcon /></span>
             <span>
-              <strong>Diario de Recuerdos:</strong> Guardaré cosas importantes sobre ti en mi diario para que nuestra conexión sea más profunda. Puedes verlo y editarlo cuando quieras.
+              <strong>Diario de Recuerdos:</strong> Guardaré cosas importantes sobre ti en mi diario para que nuestra conexión sea más profunda.
             </span>
           </li>
         </ul>
