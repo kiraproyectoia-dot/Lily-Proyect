@@ -55,7 +55,8 @@ declare global {
   }
 }
 
-const LILY_AVATAR_URL = 'https://models.readyplayer.me/68e7ada78074ade6a70196db.glb?morphTargets=ARKit,Oculus%20Visemes';
+// OPTIMIZED URL: Added textureSizeLimit=1024 and textureFormat=webp for better iOS stability
+const LILY_AVATAR_URL = 'https://models.readyplayer.me/68e7ada78074ade6a70196db.glb?morphTargets=ARKit,Oculus%20Visemes&textureSizeLimit=1024&textureFormat=webp';
 
 const App: React.FC = () => {
   const {
