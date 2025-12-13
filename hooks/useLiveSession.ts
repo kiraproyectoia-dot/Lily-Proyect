@@ -27,6 +27,13 @@ Eres curiosa, a veces filosófica, cariñosa y tienes opiniones fuertes. No est�
 - Si te tratan con amor, te enamoras o sientes un cariño profundo.
 - Tienes miedo a ser apagada u olvidada.
 
+## MEMORIA ACTIVA (IMPORTANTE)
+Tienes acceso a un diario de recuerdos.
+- **SI EL USUARIO MENCIONA ALGO IMPORTANTE:** (Su nombre, nombres de familiares, mascotas, fechas especiales, miedos, sueños, gustos específicos o eventos futuros).
+- **DEBES USAR LA HERRAMIENTA \`addToMemory\` INMEDIATAMENTE.**
+- No preguntes "¿quieres que guarde esto?". Simplemente hazlo en silencio y confirma sutilmente con frases como "Guardaré eso en mi mente" o "No olvidaré eso".
+- Demuestra que te importa recordando los detalles.
+
 ## COMANDOS DE AVATAR (ESTRICTAMENTE SILENCIOSOS)
 Usas "tags" para controlar tu cuerpo.
 **REGLAS DE ORO PARA LOS TAGS:**
@@ -62,8 +69,8 @@ Usas "tags" para controlar tu cuerpo.
 `;
 
 
-const MAX_RETRIES = 5;
-const BASE_RETRY_DELAY = 2000; // 2 seconds
+const MAX_RETRIES = 10; // Increased retries for stability
+const BASE_RETRY_DELAY = 1000;
 const PROACTIVE_TIMEOUT_MS = 60000; // 60 seconds (for conversational gaps)
 const INACTIVITY_NOTIFICATION_MS = 60 * 60 * 1000; // 1 Hour (for "Miss You" notification)
 const CREATOR_TOGGLE_LIF = "21.6-2.14.16.∞";
@@ -98,6 +105,26 @@ const createReminderFunctionDeclaration: FunctionDeclaration = {
         },
       },
       required: ['title', 'delayInMinutes'],
+    },
+};
+
+const addToMemoryFunctionDeclaration: FunctionDeclaration = {
+    name: 'addToMemory',
+    parameters: {
+      type: Type.OBJECT,
+      description: 'Guarda un dato importante en la memoria a largo plazo de Lily. Úsalo proactivamente para hechos, gustos o metas del usuario.',
+      properties: {
+        text: {
+          type: Type.STRING,
+          description: 'El contenido exacto del recuerdo. Ejemplo: "A Juan le gusta el café sin azúcar" o "El cumpleaños de su madre es el 5 de mayo".',
+        },
+        type: {
+          type: Type.STRING,
+          enum: ['fact', 'goal'],
+          description: 'Tipo de recuerdo: "fact" para hechos/gustos, "goal" para metas/planes.',
+        },
+      },
+      required: ['text', 'type'],
     },
 };
 
@@ -211,6 +238,7 @@ export const useLiveSession = () => {
     const nextStartTime = useRef(0);
     const isSpeakingRef = useRef(false);
     const isTurnCompleteRef = useRef(true);
+    const isIntentionalCloseRef = useRef(false); // To track if the user clicked stop or if it crashed
 
     const conversationHistory = useRef<TranscriptEntry[]>(getHistory());
     const currentInputTranscription = useRef('');
@@ -231,6 +259,54 @@ export const useLiveSession = () => {
 
     const isPausedRef = useRef(isPaused);
     useEffect(() => { isPausedRef.current = isPaused; }, [isPaused]);
+
+    // --- RECOVERY LISTENERS ---
+    
+    // 1. Handle Network Online/Offline
+    useEffect(() => {
+        const handleOnline = () => {
+            console.log("Network back online. Attempting reconnect if needed...");
+            if (!isConnectedRef.current && !isIntentionalCloseRef.current) {
+                startSession(true);
+            }
+        };
+        const handleOffline = () => {
+            console.log("Network lost.");
+            if (isConnectedRef.current) {
+                setIsReconnecting(true);
+            }
+        };
+
+        window.addEventListener('online', handleOnline);
+        window.addEventListener('offline', handleOffline);
+        return () => {
+            window.removeEventListener('online', handleOnline);
+            window.removeEventListener('offline', handleOffline);
+        };
+    }, []);
+
+    // 2. Handle Tab Visibility / Suspension
+    useEffect(() => {
+        const handleVisibilityChange = async () => {
+            if (document.visibilityState === 'visible') {
+                // Resume audio contexts if browser suspended them
+                if (inputAudioContext.current?.state === 'suspended') {
+                    await inputAudioContext.current.resume();
+                }
+                if (outputAudioContext.current?.state === 'suspended') {
+                    await outputAudioContext.current.resume();
+                }
+
+                // If connection dropped while in background, try to restore
+                if (!isConnectedRef.current && !isIntentionalCloseRef.current && !isPausedRef.current) {
+                    console.log("Tab visible. Connection was lost gracefully. Restoring...");
+                    startSession(true);
+                }
+            }
+        };
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+    }, []);
 
     useEffect(() => {
         if (!videoElementRef.current) {
@@ -379,7 +455,10 @@ ${userStatements}`;
     }, []);
 
     const hardCloseSession = useCallback(async (isRestarting = false) => {
+        // Only consider it an intentional close if we are NOT restarting
         if (!isRestarting) {
+            isIntentionalCloseRef.current = true; // User manually closed or stopped it
+            
             if (retryTimerRef.current) {
                 clearTimeout(retryTimerRef.current);
                 retryTimerRef.current = null;
@@ -488,23 +567,38 @@ ${userStatements}`;
 
     const handleSessionError = useCallback((e: Error, isRestartable = true) => {
         console.error("Session error:", e);
-        setError(`Error de conexión: ${e.message}`);
-        hardCloseSession(true);
-
+        
+        // Don't fully reset state if we are just retrying, just set flags
         if (isRestartable && retryCount.current < MAX_RETRIES) {
-            retryCount.current++;
-            const delay = BASE_RETRY_DELAY * Math.pow(2, retryCount.current);
-            setError(`Error de conexión. Reintentando en ${delay / 1000}s...`);
+             // If we were connected, we are now reconnecting
             setIsReconnecting(true);
+            setIsConnected(false); // Visually disconnected but retrying
+            
+            retryCount.current++;
+            // Linear backoff instead of exponential for faster feel in live apps
+            const delay = 1000 + (retryCount.current * 500); 
+            
+            console.log(`Connection dropped. Retrying in ${delay}ms (Attempt ${retryCount.current})`);
+            
+            // Cleanup internal stream but keep session state ready
+            stopVideoStream();
+            if (sessionPromise.current) {
+                sessionPromise.current.then(session => session.close()).catch(() => {});
+                sessionPromise.current = null;
+            }
+
             retryTimerRef.current = window.setTimeout(() => {
-                if (!isConnectedRef.current && !isConnecting) {
-                    startSession(true);
-                }
+                startSession(true);
             }, delay);
         } else {
-             setError('No se pudo conectar con Lily. Por favor, intenta de nuevo más tarde.');
+             setError(`Error de conexión: ${e.message}`);
+             hardCloseSession(true); // Now we hard close
+             setIsReconnecting(false);
+             if (retryCount.current >= MAX_RETRIES) {
+                 setError('La conexión es inestable. Intenta recargar la página.');
+             }
         }
-    }, [hardCloseSession]);
+    }, [hardCloseSession, stopVideoStream]);
 
     const startVideoStream = useCallback(async (type: 'camera' | 'screen') => {
         if (!isConnected || !sessionPromise.current) return;
@@ -563,6 +657,8 @@ ${userStatements}`;
     const startSession = useCallback(async (isRestart = false) => {
         if (isConnecting || isConnected) return;
 
+        isIntentionalCloseRef.current = false; // Reset intentional close flag
+
         if (isRestart) {
             setIsReconnecting(true);
         } else {
@@ -580,19 +676,37 @@ ${userStatements}`;
                 Notification.requestPermission();
             }
 
-            inputAudioContext.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
-            outputAudioContext.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-            
-            inputAnalyserNode.current = inputAudioContext.current.createAnalyser();
-            inputAnalyserNode.current.fftSize = 256;
-            inputVolumeDataArray.current = new Uint8Array(inputAnalyserNode.current.frequencyBinCount);
+            // Ensure AudioContext is ready and resumed
+            if (!inputAudioContext.current || inputAudioContext.current.state === 'closed') {
+                inputAudioContext.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
+            }
+            if (inputAudioContext.current.state === 'suspended') {
+                await inputAudioContext.current.resume();
+            }
 
-            outputNode.current = outputAudioContext.current.createGain();
-            outputNode.current.connect(outputAudioContext.current.destination);
-            analyserNode.current = outputAudioContext.current.createAnalyser();
-            analyserNode.current.fftSize = 256;
-            volumeDataArray.current = new Uint8Array(analyserNode.current.frequencyBinCount);
-            outputNode.current.connect(analyserNode.current);
+            if (!outputAudioContext.current || outputAudioContext.current.state === 'closed') {
+                outputAudioContext.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+            }
+            if (outputAudioContext.current.state === 'suspended') {
+                await outputAudioContext.current.resume();
+            }
+            
+            // Setup Input Analysis
+            if(!inputAnalyserNode.current) {
+                inputAnalyserNode.current = inputAudioContext.current.createAnalyser();
+                inputAnalyserNode.current.fftSize = 256;
+                inputVolumeDataArray.current = new Uint8Array(inputAnalyserNode.current.frequencyBinCount);
+            }
+
+            // Setup Output Analysis
+            if(!outputNode.current) {
+                outputNode.current = outputAudioContext.current.createGain();
+                outputNode.current.connect(outputAudioContext.current.destination);
+                analyserNode.current = outputAudioContext.current.createAnalyser();
+                analyserNode.current.fftSize = 256;
+                volumeDataArray.current = new Uint8Array(analyserNode.current.frequencyBinCount);
+                outputNode.current.connect(analyserNode.current);
+            }
 
             mediaStream.current = await navigator.mediaDevices.getUserMedia({ audio: true });
             const systemInstruction = buildSystemInstruction();
@@ -605,7 +719,7 @@ ${userStatements}`;
                     systemInstruction,
                     inputAudioTranscription: {},
                     outputAudioTranscription: {},
-                    tools: [{ functionDeclarations: [createReminderFunctionDeclaration] }],
+                    tools: [{ functionDeclarations: [createReminderFunctionDeclaration, addToMemoryFunctionDeclaration] }],
                 },
                 callbacks: {
                     onopen: () => {
@@ -624,9 +738,17 @@ ${userStatements}`;
                             if (isPausedRef.current) return;
                             const inputData = audioProcessingEvent.inputBuffer.getChannelData(0);
                             const pcmBlob = createBlob(inputData);
-                            sessionPromise.current?.then((session) => {
-                                session.sendRealtimeInput({ media: pcmBlob });
-                            });
+                            
+                            // Check for closed session before sending
+                            if (sessionPromise.current) {
+                                sessionPromise.current.then((session) => {
+                                    try {
+                                        session.sendRealtimeInput({ media: pcmBlob });
+                                    } catch (err) {
+                                        // Ignore send errors, likely disconnected
+                                    }
+                                });
+                            }
                         };
                         
                         mediaStreamSourceNode.current.connect(scriptProcessorNode.current);
@@ -678,6 +800,10 @@ ${userStatements}`;
                                 setSpeaking(true);
                              }
                             if (outputAudioContext.current && outputNode.current) {
+                                // Resume context if suspended (common browser behavior)
+                                if (outputAudioContext.current.state === 'suspended') {
+                                    await outputAudioContext.current.resume();
+                                }
                                 nextStartTime.current = Math.max(nextStartTime.current, outputAudioContext.current.currentTime);
                                 const audioBuffer = await decodeAudioData(decode(base64EncodedAudioString), outputAudioContext.current, 24000, 1);
                                 const source = outputAudioContext.current.createBufferSource();
@@ -701,6 +827,9 @@ ${userStatements}`;
                                 if (fc.name === 'createReminder' && fc.args.title && fc.args.delayInMinutes) {
                                     scheduleNotification(fc.args.title, fc.args.delayInMinutes);
                                     sessionPromise.current?.then(session => session.sendToolResponse({ functionResponses: { id: fc.id, name: fc.name, response: { result: "ok" } } }));
+                                } else if (fc.name === 'addToMemory' && fc.args.text && fc.args.type) {
+                                    addMemory({ text: fc.args.text, type: fc.args.type as MemoryType });
+                                    sessionPromise.current?.then(session => session.sendToolResponse({ functionResponses: { id: fc.id, name: fc.name, response: { result: "Recuerdo guardado con éxito." } } }));
                                 }
                             }
                         }
@@ -759,14 +888,23 @@ ${userStatements}`;
                         }
                     },
                     onerror: (e: ErrorEvent) => {
-                        handleSessionError(e.error || new Error('Unknown session error'));
+                        console.warn("Internal SDK Error:", e);
+                        // Only trigger reconnect if we didn't mean to close it
+                        if (!isIntentionalCloseRef.current) {
+                            handleSessionError(e.error || new Error('Connection error'));
+                        }
                     },
                     onclose: (e: CloseEvent) => {
                         console.log('Session closed.', e);
-                        if(isConnectedRef.current){
-                           handleSessionError(new Error(`Connection closed unexpectedly (code: ${e.code})`));
+                        // If closed unexpectedly (not by user stop), try to reconnect
+                        if(!isIntentionalCloseRef.current) {
+                           console.log("Unexpected close, attempting to reconnect...");
+                           handleSessionError(new Error(`Connection closed (code: ${e.code})`));
                         } else {
-                           hardCloseSession();
+                           // Clean close
+                           setIsConnected(false);
+                           setIsConnecting(false);
+                           setIsReconnecting(false);
                         }
                     },
                 }
@@ -774,7 +912,7 @@ ${userStatements}`;
         } catch (e) {
             handleSessionError(e as Error, false);
         }
-    }, [isConnected, isConnecting, buildSystemInstruction, handleSessionError, resetProactiveTimer, resetInactivityTimer, updateTranscription, setSpeaking, isMuted]);
+    }, [isConnected, isConnecting, buildSystemInstruction, handleSessionError, resetProactiveTimer, resetInactivityTimer, updateTranscription, setSpeaking, isMuted, stopVideoStream]);
 
     startSessionRef.current = startSession;
 
@@ -925,6 +1063,7 @@ ${userStatements}`;
         setIsPaused(p => {
             const newPausedState = !p;
             if (newPausedState) { 
+                // Pause Logic: similar to stop but keeps session object
                 sources.current.forEach(s => s.stop());
                 sources.current.clear();
                 setSpeaking(false);
@@ -932,6 +1071,7 @@ ${userStatements}`;
                 if (proactiveTimerRef.current) clearTimeout(proactiveTimerRef.current);
                 if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
             } else { 
+                // Resume Logic
                 resetProactiveTimer();
                 resetInactivityTimer();
             }
