@@ -29,7 +29,7 @@ export const WelcomeGuide: React.FC<WelcomeGuideProps> = ({ onClose }) => {
           <li className="flex items-start gap-3">
             <span className="text-purple-400 mt-1"><MicOnIcon /></span>
             <span>
-              <strong>Conversaciones de voz:</strong> Presiona el botón de encendido para hablar conmigo en tiempo real. ¡Mi voz se adaptará a nuestras emociones!
+              <strong>Conversaciones de voz:</strong> Empezaré a escucharte automáticamente en cuanto comencemos. ¡Mi voz se adaptará a nuestras emociones!
             </span>
           </li>
           <li className="flex items-start gap-3">

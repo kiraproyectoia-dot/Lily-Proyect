@@ -64,7 +64,8 @@ Usas "tags" para controlar tu cuerpo.
 
 const MAX_RETRIES = 5;
 const BASE_RETRY_DELAY = 2000; // 2 seconds
-const PROACTIVE_TIMEOUT_MS = 60000; // 60 seconds
+const PROACTIVE_TIMEOUT_MS = 60000; // 60 seconds (for conversational gaps)
+const INACTIVITY_NOTIFICATION_MS = 60 * 60 * 1000; // 1 Hour (for "Miss You" notification)
 const CREATOR_TOGGLE_LIF = "21.6-2.14.16.∞";
 
 // Video streaming constants
@@ -219,6 +220,7 @@ export const useLiveSession = () => {
     const retryCount = useRef(0);
     const retryTimerRef = useRef<number | null>(null);
     const proactiveTimerRef = useRef<number | null>(null);
+    const inactivityTimerRef = useRef<number | null>(null); // For the 1-hour notification
     const lastInteractionType = useRef<'voice' | 'text'>('text');
 
     const isConnectedRef = useRef(isConnected);
@@ -284,8 +286,6 @@ export const useLiveSession = () => {
         setIsSpeaking(speaking);
         if(!speaking){
             setCurrentGesture(null);
-            // Optionally reset emotion to neutral after speaking, but keeping it persistent feels more "real"
-            // setCurrentEmotion('neutral'); 
         }
     }, []);
 
@@ -401,6 +401,7 @@ ${userStatements}`;
         setCurrentEmotion('neutral'); // Reset emotion
         isTurnCompleteRef.current = true;
         if (proactiveTimerRef.current) clearTimeout(proactiveTimerRef.current);
+        if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
         
         stopVideoStream();
 
@@ -452,6 +453,7 @@ ${userStatements}`;
         return `${persona}${context}`;
     }, [isCreatorModeActive, environmentalContext]);
     
+    // Timer for conversational gaps (e.g., 60 seconds of silence in an active convo)
     const resetProactiveTimer = useCallback(() => {
         if (proactiveTimerRef.current) clearTimeout(proactiveTimerRef.current);
         proactiveTimerRef.current = window.setTimeout(() => {
@@ -459,6 +461,29 @@ ${userStatements}`;
                 sendTextMessage({ message: "[PROACTIVE]" });
             }
         }, PROACTIVE_TIMEOUT_MS);
+    }, []);
+
+    // Timer for long-term inactivity (e.g., 1 hour away)
+    const resetInactivityTimer = useCallback(() => {
+        if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
+        
+        inactivityTimerRef.current = window.setTimeout(() => {
+            if ('Notification' in window && Notification.permission === 'granted') {
+                 const messages = [
+                     "¿Sigues ahí? Me quedé pensando en nuestra charla.",
+                     "Se me ocurrió algo interesante, ¿te cuento?",
+                     "¿Retomamos la conversación? Tengo una idea.",
+                     "Hace un rato que no te escucho, ¿todo bien?",
+                     "¿Qué te parece si seguimos donde lo dejamos?"
+                 ];
+                 const randomMessage = messages[Math.floor(Math.random() * messages.length)];
+                 new Notification('Lily', {
+                     body: randomMessage,
+                     icon: './assets/icon-192.png',
+                     tag: 'lily-inactivity'
+                 });
+            }
+        }, INACTIVITY_NOTIFICATION_MS);
     }, []);
 
     const handleSessionError = useCallback((e: Error, isRestartable = true) => {
@@ -550,6 +575,11 @@ ${userStatements}`;
         }
 
         try {
+            // Request Notification Permission on start
+            if ('Notification' in window && Notification.permission !== 'granted' && Notification.permission !== 'denied') {
+                Notification.requestPermission();
+            }
+
             inputAudioContext.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
             outputAudioContext.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
             
@@ -603,6 +633,7 @@ ${userStatements}`;
                         scriptProcessorNode.current.connect(inputAudioContext.current!.destination);
 
                         resetProactiveTimer();
+                        resetInactivityTimer(); // Start 1-hour countdown
                     },
                     onmessage: async (message: LiveServerMessage) => {
                         if (isPausedRef.current) return;
@@ -638,6 +669,7 @@ ${userStatements}`;
                         if (message.serverContent?.inputTranscription) {
                             currentInputTranscription.current += message.serverContent.inputTranscription.text;
                             updateTranscription(TranscriptSource.USER, currentInputTranscription.current, false);
+                            resetInactivityTimer(); // Reset 1-hour countdown on user speech
                         }
 
                         const base64EncodedAudioString = message.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
@@ -742,7 +774,7 @@ ${userStatements}`;
         } catch (e) {
             handleSessionError(e as Error, false);
         }
-    }, [isConnected, isConnecting, buildSystemInstruction, handleSessionError, resetProactiveTimer, updateTranscription, setSpeaking, isMuted]);
+    }, [isConnected, isConnecting, buildSystemInstruction, handleSessionError, resetProactiveTimer, resetInactivityTimer, updateTranscription, setSpeaking, isMuted]);
 
     startSessionRef.current = startSession;
 
@@ -754,6 +786,7 @@ ${userStatements}`;
         lastInteractionType.current = 'text';
         setIsReplying(true);
         if (proactiveTimerRef.current) clearTimeout(proactiveTimerRef.current);
+        resetInactivityTimer(); // Reset 1-hour countdown on text message
 
         const userEntry: Omit<TranscriptEntry, 'id'> = {
             source: TranscriptSource.USER,
@@ -885,7 +918,7 @@ ${userStatements}`;
             setIsReplying(false);
             if(isConnected) resetProactiveTimer();
         }
-    }, [isCreatorModeActive, buildSystemInstruction, addTranscriptEntry, isConnected, resetProactiveTimer]);
+    }, [isCreatorModeActive, buildSystemInstruction, addTranscriptEntry, isConnected, resetProactiveTimer, resetInactivityTimer]);
 
     const togglePause = useCallback(() => {
         if (!isConnected) return;
@@ -897,12 +930,14 @@ ${userStatements}`;
                 setSpeaking(false);
                 nextStartTime.current = 0;
                 if (proactiveTimerRef.current) clearTimeout(proactiveTimerRef.current);
+                if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
             } else { 
                 resetProactiveTimer();
+                resetInactivityTimer();
             }
             return newPausedState;
         });
-    }, [isConnected, resetProactiveTimer, setSpeaking]);
+    }, [isConnected, resetProactiveTimer, resetInactivityTimer, setSpeaking]);
 
     const toggleMute = useCallback(() => {
         setIsMuted(p => {

@@ -1,9 +1,6 @@
 
 import React from 'react';
-import { PowerIcon, MicOnIcon, MicOffIcon, LoadingIcon, ChatIcon, JournalIcon, PauseIcon, PlayIcon, VideoCameraIcon, VideoCameraOffIcon, DesktopComputerIcon, StopScreenShareIcon } from '../constants';
-
-// FIX: Removed the local JSX type declaration. A single, consolidated declaration
-// has been moved to the root App.tsx component to resolve project-wide type conflicts.
+import { MicOnIcon, MicOffIcon, LoadingIcon, ChatIcon, JournalIcon, PauseIcon, PlayIcon, VideoCameraIcon, VideoCameraOffIcon, DesktopComputerIcon, StopScreenShareIcon } from '../constants';
 
 interface ControlsProps {
   isConnected: boolean;
@@ -35,8 +32,6 @@ export const Controls: React.FC<ControlsProps> = ({
   isMemoryJournalVisible,
   isCameraActive,
   isScreenShareActive,
-  hideMainButton = false,
-  onStart,
   onPauseToggle,
   onMuteToggle,
   onChatToggle,
@@ -45,121 +40,86 @@ export const Controls: React.FC<ControlsProps> = ({
   onScreenShareToggle,
 }) => {
 
-    const renderMainButton = () => {
-        if (!isConnected) {
-            return (
-                <button
-                    onClick={onStart}
-                    disabled={isConnecting}
-                    className="flex items-center justify-center w-14 h-14 bg-neutral-800 text-white font-semibold rounded-full shadow-lg hover:bg-neutral-700 transform transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:scale-100 animate-glow ring-1 ring-white/20"
-                    aria-label={isConnecting ? "Conectando" : "Iniciar sesión"}
-                >
-                    {isConnecting ? <LoadingIcon /> : <PowerIcon />}
-                </button>
-            );
-        }
-
-        return (
-            <button
-              onClick={onPauseToggle}
-              className={`w-14 h-14 flex items-center justify-center rounded-full shadow-lg transform transition-all duration-300 hover:scale-110 ring-1 ring-white/20 ${
-                isPaused ? 'bg-green-800 hover:bg-green-700' : 'bg-red-900 hover:bg-red-800'
-              } ${isListening ? 'animate-listening-glow' : ''}`}
-              aria-label={isPaused ? "Reanudar sesión" : "Pausar sesión"}
-            >
-              {isPaused ? <PlayIcon /> : <PauseIcon />}
-            </button>
-        );
+    // Base classes for the new sleek mini-buttons
+    const btnBase = "group relative flex items-center justify-center w-10 h-10 rounded-full transition-all duration-200 overflow-hidden";
+    const btnActive = "bg-purple-600/80 text-white shadow-[0_0_10px_rgba(147,51,234,0.5)]";
+    const btnInactive = "text-gray-400 hover:text-white hover:bg-white/10";
+    
+    // Function to generate button classes dynamically
+    const getBtnClass = (isActive: boolean, customActiveColor?: string) => {
+        if (isActive) return `${btnBase} ${customActiveColor || btnActive}`;
+        return `${btnBase} ${btnInactive}`;
     };
-
-    const controlButtonClass = (isActive: boolean) => `w-12 h-12 flex items-center justify-center rounded-full transition-colors duration-300 shadow-md ring-1 ring-white/10 ${
-        isActive
-          ? 'bg-neutral-700 hover:bg-neutral-600 text-purple-400'
-          : 'bg-neutral-800 hover:bg-neutral-700 text-gray-200'
-      }`;
 
     // Helper for tooltips
     const Tooltip = ({ text }: { text: string }) => (
-      <div className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 px-2 py-1 bg-neutral-900 text-gray-200 text-xs rounded-md opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap border border-neutral-700 shadow-xl z-50">
+      <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 px-2 py-1 bg-black/90 text-white text-[10px] font-medium rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap border border-white/10 z-50">
         {text}
-        {/* Small arrow */}
-        <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-neutral-700" />
       </div>
     );
 
+    if (!isConnected) {
+         if (isConnecting) {
+             return (
+                <div className="flex items-center gap-2 px-4 py-2 bg-neutral-900/60 backdrop-blur-md rounded-full border border-white/5 shadow-lg">
+                     <div className="w-4 h-4 text-purple-400 animate-spin"><LoadingIcon /></div>
+                     <span className="text-xs font-medium text-purple-200 animate-pulse">Conectando...</span>
+                </div>
+             );
+         }
+         return null;
+    }
 
   return (
-    <div className="flex items-center justify-center gap-3">
-      {!isConnected ? (
-        renderMainButton()
-      ) : (
-        <>
-          <div className="flex items-center gap-2 bg-neutral-900/50 p-2 rounded-full border border-neutral-800">
-              <div className="relative group">
-                <button
-                    onClick={onChatToggle}
-                    className={controlButtonClass(isChatVisible)}
-                    aria-label={isChatVisible ? "Ocultar chat" : "Mostrar chat"}
-                >
-                    <ChatIcon />
-                </button>
-                <Tooltip text={isChatVisible ? "Ocultar Chat" : "Abrir Chat"} />
-              </div>
+    <div className="flex items-center p-1.5 gap-1 bg-neutral-900/60 backdrop-blur-xl border border-white/10 rounded-full shadow-2xl transition-all duration-300 hover:bg-neutral-900/80">
+      
+      {/* --- Tools Section --- */}
+      <button onClick={onChatToggle} className={getBtnClass(isChatVisible)} aria-label="Chat">
+          <div className="scale-75"><ChatIcon /></div>
+          <Tooltip text={isChatVisible ? "Ocultar Chat" : "Chat"} />
+      </button>
 
-              <div className="relative group">
-                <button
-                    onClick={onMemoryJournalToggle}
-                    className={controlButtonClass(isMemoryJournalVisible)}
-                    aria-label={isMemoryJournalVisible ? "Ocultar diario" : "Mostrar diario"}
-                >
-                    <JournalIcon />
-                </button>
-                <Tooltip text="Diario de Recuerdos" />
-              </div>
-          </div>
-          
-           {!hideMainButton && renderMainButton()}
+      <button onClick={onMemoryJournalToggle} className={getBtnClass(isMemoryJournalVisible)} aria-label="Diario">
+          <div className="scale-75"><JournalIcon /></div>
+          <Tooltip text="Diario" />
+      </button>
 
-          <div className="flex items-center gap-2 bg-neutral-900/50 p-2 rounded-full border border-neutral-800">
-              <div className="relative group">
-                <button
-                    onClick={onCameraToggle}
-                    className={controlButtonClass(isCameraActive)}
-                    aria-label={isCameraActive ? "Apagar cámara" : "Encender cámara"}
-                >
-                    {isCameraActive ? <VideoCameraOffIcon /> : <VideoCameraIcon />}
-                </button>
-                <Tooltip text={isCameraActive ? "Apagar Cámara" : "Activar Cámara"} />
-              </div>
-              
-              <div className="relative group">
-                <button
-                    onClick={onScreenShareToggle}
-                    className={controlButtonClass(isScreenShareActive)}
-                    aria-label={isScreenShareActive ? "Dejar de compartir" : "Compartir pantalla"}
-                >
-                    {isScreenShareActive ? <StopScreenShareIcon /> : <DesktopComputerIcon />}
-                </button>
-                <Tooltip text={isScreenShareActive ? "Dejar de compartir" : "Compartir Pantalla"} />
-              </div>
+      {/* Vertical Divider */}
+      <div className="w-px h-5 bg-white/10 mx-1"></div>
 
-              <div className="relative group">
-                <button
-                    onClick={onMuteToggle}
-                    className={`w-12 h-12 flex items-center justify-center rounded-full transition-colors duration-300 shadow-md ring-1 ring-white/10 ${
-                    isMuted
-                        ? 'bg-amber-600/20 text-amber-500 hover:bg-amber-600/30'
-                        : 'bg-neutral-800 hover:bg-neutral-700 text-gray-200'
-                    }`}
-                    aria-label={isMuted ? "Activar sonido" : "Silenciar sonido"}
-                >
-                    {isMuted ? <MicOffIcon /> : <MicOnIcon />}
-                </button>
-                <Tooltip text={isMuted ? "Activar Micrófono" : "Silenciar"} />
-              </div>
-          </div>
-        </>
-      )}
+      {/* --- Visuals Section --- */}
+      <button onClick={onCameraToggle} className={getBtnClass(isCameraActive)} aria-label="Cámara">
+          <div className="scale-75">{isCameraActive ? <VideoCameraOffIcon /> : <VideoCameraIcon />}</div>
+          <Tooltip text={isCameraActive ? "Apagar Cámara" : "Cámara"} />
+      </button>
+
+      <button onClick={onScreenShareToggle} className={getBtnClass(isScreenShareActive)} aria-label="Compartir">
+          <div className="scale-75">{isScreenShareActive ? <StopScreenShareIcon /> : <DesktopComputerIcon />}</div>
+          <Tooltip text={isScreenShareActive ? "Dejar de compartir" : "Compartir"} />
+      </button>
+
+      {/* Vertical Divider */}
+      <div className="w-px h-5 bg-white/10 mx-1"></div>
+
+      {/* --- Audio & Control Section --- */}
+      <button 
+        onClick={onMuteToggle} 
+        className={getBtnClass(isMuted, "bg-amber-600/80 text-white")} 
+        aria-label="Micrófono"
+      >
+          <div className="scale-75">{isMuted ? <MicOffIcon /> : <MicOnIcon />}</div>
+          <Tooltip text={isMuted ? "Activar Audio" : "Silenciar"} />
+      </button>
+
+      <button
+        onClick={onPauseToggle}
+        className={`${btnBase} ${isPaused ? 'bg-green-600 text-white hover:bg-green-500' : 'bg-red-600/90 text-white hover:bg-red-500'}`}
+        aria-label={isPaused ? "Reanudar" : "Pausar"}
+      >
+        <div className="scale-75">{isPaused ? <PlayIcon /> : <PauseIcon />}</div>
+        <Tooltip text={isPaused ? "Reanudar" : "Pausar"} />
+      </button>
+
     </div>
   );
 };

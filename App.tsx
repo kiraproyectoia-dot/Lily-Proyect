@@ -12,7 +12,7 @@ import { ChatInput } from './components/ChatInput';
 import { MemoryJournal } from './components/MemoryJournal';
 import { WelcomeGuide } from './components/WelcomeGuide';
 import { WelcomeBack } from './components/WelcomeBack';
-import { LILY_BACKGROUND_MEDIA_URL, TrashIcon, PlayIcon, PauseIcon, AttachmentIcon } from './constants';
+import { LILY_BACKGROUND_MEDIA_URL, TrashIcon, AttachmentIcon } from './constants';
 import { MediaPlayer } from './components/MediaPlayer';
 
 // FIX: Consolidated all global JSX intrinsic element definitions into this single, project-wide declaration.
@@ -128,21 +128,30 @@ const App: React.FC = () => {
     const TWELVE_HOURS = 12 * 60 * 60 * 1000;
     if (lastVisit && now - parseInt(lastVisit, 10) > TWELVE_HOURS) {
         setShowWelcomeBack(true);
-    }
+    } 
 
     const updateTimestamp = () => localStorage.setItem('lily_last_visit_timestamp', String(Date.now()));
     window.addEventListener('beforeunload', updateTimestamp);
     return () => window.removeEventListener('beforeunload', updateTimestamp);
   }, []);
+
+  // Auto-start session if no modals are showing and we aren't connected
+  useEffect(() => {
+      if (!showWelcome && !showWelcomeBack && !isConnected && !isConnecting && !isReconnecting) {
+          startSession();
+      }
+  }, [showWelcome, showWelcomeBack, isConnected, isConnecting, isReconnecting, startSession]);
   
   const handleWelcomeClose = () => {
     localStorage.setItem('lily_has_seen_welcome_guide_v1', 'true');
     setShowWelcome(false);
+    startSession();
   };
   
   const handleWelcomeBackClose = () => {
     localStorage.setItem('lily_last_visit_timestamp', String(Date.now()));
     setShowWelcomeBack(false);
+    startSession();
   };
 
   const toggleChatVisibility = () => setIsChatVisible(prev => !prev);
@@ -210,25 +219,12 @@ const App: React.FC = () => {
         className="relative w-full max-w-5xl h-[95vh] flex flex-col bg-neutral-900/70 rounded-2xl shadow-2xl backdrop-blur-lg border border-neutral-800 overflow-hidden"
         onDrop={handleDrop} // Ensure drop works inside the container too
       >
-        <header className="flex items-center justify-between p-4 border-b border-neutral-800 flex-shrink-0 z-10">
-          <div className="flex items-center gap-4">
-              <div className="flex flex-col">
-                <h1 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-500">
-                  Lily
-                </h1>
-                <StatusIndicator isConnected={isConnected} isConnecting={isConnecting} isReconnecting={isReconnecting} />
-              </div>
-              {isConnected && (
-                <button
-                  onClick={togglePause}
-                  className={`w-10 h-10 flex items-center justify-center rounded-full shadow-lg transition-all duration-300 ring-1 ring-white/20 ${
-                    isPaused ? 'bg-green-800 hover:bg-green-700' : 'bg-red-900 hover:bg-red-800'
-                  } ${isListening ? 'animate-listening-glow' : ''}`}
-                  aria-label={isPaused ? "Reanudar sesión" : "Pausar sesión"}
-                >
-                  {isPaused ? <PlayIcon /> : <PauseIcon />}
-                </button>
-              )}
+        <header className="flex items-center justify-between px-4 py-3 border-b border-neutral-800/50 flex-shrink-0 z-10">
+          <div className="flex items-center gap-3">
+             <h1 className="text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-500 tracking-tight">
+               Lily
+             </h1>
+             <StatusIndicator isConnected={isConnected} isConnecting={isConnecting} isReconnecting={isReconnecting} />
           </div>
           <Controls
               isConnected={isConnected}
@@ -269,7 +265,7 @@ const App: React.FC = () => {
           </div>
           
           {isChatVisible && (
-            <div className="flex-shrink-0 flex flex-col max-h-[40vh] bg-black/40 border-t border-neutral-800">
+            <div className="flex-shrink-0 flex flex-col max-h-[40vh] bg-black/40 border-t border-neutral-800 backdrop-blur-md">
                <div className="flex items-center justify-between p-2 border-b border-neutral-800/50 flex-shrink-0">
                   <h3 className="text-sm font-semibold text-gray-300 pl-2">Chat</h3>
                   <button
