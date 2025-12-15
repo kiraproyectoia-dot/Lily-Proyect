@@ -4,10 +4,10 @@ import { UserProfile } from '../types';
 const PROFILE_KEY = 'lily_dynamic_profile_v1';
 
 const DEFAULT_PROFILE: UserProfile = {
-  userName: 'Usuario',
-  userRelation: 'Compañera',
-  lilyPersona: 'Curiosa, empática y con opiniones propias',
-  emotionalState: 'neutral',
+  userName: 'Usuario', // Se mantiente como placeholder, pero el hook ahora sabe ignorarlo
+  userRelation: 'Compañera cercana', // Más íntimo que "Compañera"
+  lilyPersona: 'Cálida, emocionalmente profunda, espontánea y afectuosa', // Base mucho más humana
+  emotionalState: 'curious', // Empieza curiosa/feliz en lugar de neutral
   lastInteractionTimestamp: Date.now(),
 };
 
