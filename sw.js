@@ -1,3 +1,4 @@
+
 const CACHE_NAME = 'lily-cache-v1';
 const urlsToCache = [
   './',
@@ -10,6 +11,7 @@ const urlsToCache = [
   './components/Controls.tsx',
   './components/StatusIndicator.tsx',
   './components/TranscriptionDisplay.tsx',
+  './components/AudioVisualizer.tsx',
   './constants.tsx',
   './types.ts',
   './utils/audio.ts',

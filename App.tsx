@@ -12,7 +12,7 @@ import { ChatInput } from './components/ChatInput';
 import { MemoryJournal } from './components/MemoryJournal';
 import { WelcomeGuide } from './components/WelcomeGuide';
 import { WelcomeBack } from './components/WelcomeBack';
-import { LILY_BACKGROUND_MEDIA_URL, TrashIcon, AttachmentIcon } from './constants';
+import { LILY_BACKGROUND_MEDIA_URL, TrashIcon, AttachmentIcon, MicOnIcon } from './constants';
 import { MediaPlayer } from './components/MediaPlayer';
 
 // FIX: Consolidated all global JSX intrinsic element definitions into this single, project-wide declaration.
@@ -134,13 +134,6 @@ const App: React.FC = () => {
     window.addEventListener('beforeunload', updateTimestamp);
     return () => window.removeEventListener('beforeunload', updateTimestamp);
   }, []);
-
-  // Auto-start session if no modals are showing and we aren't connected
-  useEffect(() => {
-      if (!showWelcome && !showWelcomeBack && !isConnected && !isConnecting && !isReconnecting) {
-          startSession();
-      }
-  }, [showWelcome, showWelcomeBack, isConnected, isConnecting, isReconnecting, startSession]);
   
   const handleWelcomeClose = () => {
     localStorage.setItem('lily_has_seen_welcome_guide_v1', 'true');
@@ -192,6 +185,8 @@ const App: React.FC = () => {
     }
   };
 
+  const showStartButton = !isConnected && !isConnecting && !isReconnecting && !showWelcome && !showWelcomeBack;
+
   return (
     <div 
       className="relative text-white min-h-screen flex flex-col items-center justify-center p-4 font-sans"
@@ -239,7 +234,7 @@ const App: React.FC = () => {
               hideMainButton={isConnected}
               onStart={startSession}
               onPauseToggle={togglePause}
-              onMuteToggle={toggleMute}
+              onMuteToggle={togglePause}
               onChatToggle={toggleChatVisibility}
               onMemoryJournalToggle={toggleMemoryJournalVisibility}
               onCameraToggle={toggleCamera}
@@ -247,7 +242,7 @@ const App: React.FC = () => {
           />
         </header>
         
-        <main className="flex flex-col flex-grow overflow-hidden">
+        <main className="flex flex-col flex-grow overflow-hidden relative">
           <div className="flex-grow relative min-h-0">
             <video
               key={LILY_BACKGROUND_MEDIA_URL}
@@ -255,6 +250,7 @@ const App: React.FC = () => {
               src={LILY_BACKGROUND_MEDIA_URL}
               className="absolute inset-0 w-full h-full object-cover opacity-40"
             />
+            
             <Avatar 
               modelUrl={LILY_AVATAR_URL}
               isSpeaking={isSpeaking}
@@ -262,15 +258,32 @@ const App: React.FC = () => {
               currentEmotion={currentEmotion}
               getAudioVolume={getAudioVolume}
             />
+
+            {showStartButton && (
+                <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/40 backdrop-blur-[2px]">
+                    <button 
+                        onClick={() => startSession()}
+                        className="group relative px-8 py-4 bg-transparent overflow-hidden rounded-full transition-all hover:scale-105 active:scale-95"
+                    >
+                        <div className="absolute inset-0 bg-gradient-to-r from-purple-600 to-pink-600 opacity-90 group-hover:opacity-100 transition-opacity" />
+                        <div className="absolute inset-0 blur-lg bg-purple-500 opacity-50 group-hover:opacity-80 animate-pulse" />
+                        <span className="relative z-10 text-white font-bold text-xl flex items-center gap-3 drop-shadow-md">
+                           <MicOnIcon /> 
+                           Hablar con Lily
+                        </span>
+                    </button>
+                    <p className="mt-4 text-gray-300 text-sm font-medium drop-shadow bg-black/30 px-3 py-1 rounded-full">Pulsa para iniciar la conexión en tiempo real</p>
+                </div>
+             )}
           </div>
           
           {isChatVisible && (
-            <div className="flex-shrink-0 flex flex-col max-h-[40vh] bg-black/40 border-t border-neutral-800 backdrop-blur-md">
-               <div className="flex items-center justify-between p-2 border-b border-neutral-800/50 flex-shrink-0">
+            <div className="flex-shrink-0 flex flex-col h-[40vh] bg-black/20 border-t border-white/10 backdrop-blur-xl z-20 transition-all duration-300">
+               <div className="flex items-center justify-between p-2 border-b border-white/5 flex-shrink-0">
                   <h3 className="text-sm font-semibold text-gray-300 pl-2">Chat</h3>
                   <button
                     onClick={clearChatHistory}
-                    className="p-2 rounded-full text-gray-400 hover:text-red-500 hover:bg-neutral-700 transition-colors"
+                    className="p-2 rounded-full text-gray-400 hover:text-red-500 hover:bg-white/5 transition-colors"
                     aria-label="Limpiar y reiniciar"
                   >
                     <TrashIcon />
@@ -293,7 +306,7 @@ const App: React.FC = () => {
         {mediaUrl && <MediaPlayer url={mediaUrl} onClose={() => setMediaUrl(null)} />}
 
         {sessionError && (
-            <footer className="p-2 text-center text-sm bg-red-900/50 border-t border-red-700/50">
+            <footer className="p-2 text-center text-sm bg-red-900/50 border-t border-red-700/50 z-50">
                 <p>{sessionError}</p>
             </footer>
         )}

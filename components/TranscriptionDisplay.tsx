@@ -1,5 +1,4 @@
 
-
 import React, { useRef, useEffect } from 'react';
 import { TranscriptEntry, TranscriptSource } from '../types';
 import { JournalIcon, MapPinIcon } from '../constants'; // Re-use journal icon for saving memory
@@ -17,8 +16,8 @@ interface TranscriptionDisplayProps {
 const TranscriptBubble: React.FC<{ entry: TranscriptEntry; onSaveMemory: (entry: TranscriptEntry) => void; }> = ({ entry, onSaveMemory }) => {
   const isUser = entry.source === TranscriptSource.USER;
   const bubbleClass = isUser
-    ? 'bg-neutral-700/90 self-end'
-    : 'bg-neutral-800/80 self-start';
+    ? 'bg-purple-900/30 backdrop-blur-md border border-purple-500/20 self-end'
+    : 'bg-neutral-800/40 backdrop-blur-md border border-white/5 self-start';
   const opacityClass = entry.isFinal ? 'opacity-100' : 'opacity-70';
 
   const hasContent = entry.text || entry.imageUrl || entry.attachment || (entry.searchResults && entry.searchResults.length > 0);
@@ -70,7 +69,7 @@ const TranscriptBubble: React.FC<{ entry: TranscriptEntry; onSaveMemory: (entry:
       )}
 
       {entry.searchResults && entry.searchResults.length > 0 && (
-        <div className="mt-3 pt-3 border-t border-neutral-700/50">
+        <div className="mt-3 pt-3 border-t border-white/5">
           <h4 className="text-xs font-semibold text-purple-300 mb-2">Fuentes:</h4>
           <ul className="space-y-1.5">
             {entry.searchResults.map((result, index) => (
@@ -98,7 +97,7 @@ const TranscriptBubble: React.FC<{ entry: TranscriptEntry; onSaveMemory: (entry:
 
 const TypingIndicatorBubble: React.FC = () => (
     <div
-      className={`max-w-xs sm:max-w-md md:max-w-lg p-3 rounded-2xl transition-all duration-300 shadow-md flex flex-col gap-2 bg-neutral-800/80 self-start`}
+      className={`max-w-xs sm:max-w-md md:max-w-lg p-3 rounded-2xl transition-all duration-300 shadow-md flex flex-col gap-2 bg-neutral-800/40 backdrop-blur-md border border-white/5 self-start`}
     >
       <div className="flex items-center space-x-1.5 h-5">
         <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse [animation-delay:-0.3s]"></div>
@@ -129,7 +128,7 @@ export const TranscriptionDisplay: React.FC<TranscriptionDisplayProps> = ({ tran
         >
             {transcripts.length === 0 && !showTypingIndicator ? (
                 <div className="flex items-center justify-center h-full text-gray-400/90">
-                    <p className="text-center text-sm">La transcripción del chat aparecerá aquí.</p>
+                    <p className="text-center text-sm drop-shadow-md">La transcripción del chat aparecerá aquí.</p>
                 </div>
             ) : (
                 <>

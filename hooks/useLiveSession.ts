@@ -658,6 +658,22 @@ ${userStatements}`;
         if (isConnecting || isConnected) return;
 
         isIntentionalCloseRef.current = false; // Reset intentional close flag
+        
+        // TIMEOUT SAFETY: Prevent stuck 'connecting' state
+        const connectionTimeoutId = setTimeout(() => {
+            if (!isConnectedRef.current) {
+                console.warn("Connection timed out");
+                setError("La conexión tardó demasiado. Por favor, intenta de nuevo.");
+                setIsConnecting(false);
+                setIsReconnecting(false);
+                // Force reset state
+                stopVideoStream();
+                if (sessionPromise.current) {
+                    sessionPromise.current.then(s => s.close()).catch(() => {});
+                    sessionPromise.current = null;
+                }
+            }
+        }, 12000); // 12 seconds timeout
 
         if (isRestart) {
             setIsReconnecting(true);
@@ -723,6 +739,7 @@ ${userStatements}`;
                 },
                 callbacks: {
                     onopen: () => {
+                        clearTimeout(connectionTimeoutId); // CONNECTION SUCCESSFUL
                         console.log('Session opened.');
                         setIsConnected(true);
                         setIsConnecting(false);
@@ -910,6 +927,7 @@ ${userStatements}`;
                 }
             });
         } catch (e) {
+            clearTimeout(connectionTimeoutId); // CLEAR TIMEOUT on synchronous error
             handleSessionError(e as Error, false);
         }
     }, [isConnected, isConnecting, buildSystemInstruction, handleSessionError, resetProactiveTimer, resetInactivityTimer, updateTranscription, setSpeaking, isMuted, stopVideoStream]);
