@@ -1,12 +1,26 @@
+
 {
+  "id": "/",
+  "scope": "/",
   "short_name": "Lily",
   "name": "Lily - AI Companion",
-  "description": "A real-time, voice-interactive AI companion with a deep, evolving personality.",
+  "description": "A real-time, voice-interactive AI companion with a deep, evolving personality. Engage in natural, meaningful conversations with Lily.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#000000",
+  "background_color": "#000000",
+  "categories": [
+    "lifestyle",
+    "productivity",
+    "artificial_intelligence"
+  ],
   "icons": [
     {
       "src": "./assets/lily-icon.svg",
       "sizes": "any",
-      "type": "image/svg+xml"
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
     },
     {
       "src": "./assets/icon-192.png",
@@ -21,9 +35,35 @@
       "purpose": "any maskable"
     }
   ],
-  "start_url": ".",
-  "display": "standalone",
-  "orientation": "portrait",
-  "theme_color": "#000000",
-  "background_color": "#000000"
+  "screenshots": [
+    {
+      "src": "./assets/screenshot-mobile-1.png",
+      "sizes": "1080x1920",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Chat with Lily"
+    },
+    {
+      "src": "./assets/screenshot-desktop-1.png",
+      "sizes": "1920x1080",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Desktop Experience"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Chat",
+      "short_name": "Chat",
+      "description": "Open chat with Lily",
+      "url": "./index.html?action=chat",
+      "icons": [{ "src": "./assets/icon-192.png", "sizes": "192x192" }]
+    }
+  ],
+  "requestFramePermissions": [
+    "microphone",
+    "geolocation",
+    "camera",
+    "display-capture"
+  ]
 }

@@ -1,3 +1,4 @@
+
 import { GenerateContentResponse } from "@google/genai";
 
 export enum TranscriptSource {
@@ -35,4 +36,13 @@ export interface Memory {
   imageUrl?: string;
   type: MemoryType;
   timestamp: number;
+}
+
+// Nueva interfaz para el perfil dinámico
+export interface UserProfile {
+  userName: string; // "Juan"
+  userRelation: string; // "Esposo", "Amigo", "Hijo"
+  lilyPersona: string; // "Cariñosa y atenta", "Sarcástica", "Maternal"
+  emotionalState: string; // "happy", "sad", "neutral"
+  lastInteractionTimestamp: number;
 }

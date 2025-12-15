@@ -3,14 +3,20 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <!-- Viewport optimized for native-like experience: user-scalable=no prevents zoom on inputs -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <title>Lily - AI Companion</title>
+
+    <meta name="description" content="A real-time, voice-interactive AI companion. Talk to Lily, your virtual confidante.">
 
     <!-- PWA & Mobile Enhancements -->
     <link rel="manifest" href="./manifest.json" />
     <meta name="theme-color" content="#000000" />
     <link rel="icon" href="./assets/lily-icon.svg" type="image/svg+xml">
+    
+    <!-- iOS Specifics -->
     <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Lily">
     <link rel="apple-touch-icon" href="./assets/icon-192.png">
@@ -30,6 +36,17 @@
 }
 </script>
 <style>
+  /* Disable text selection for app-like feel */
+  body {
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+    -webkit-user-select: none;
+    overscroll-behavior-y: none; /* Prevents pull-to-refresh on mobile */
+  }
+  input, textarea {
+    user-select: text;
+    -webkit-user-select: text;
+  }
   @keyframes glow {
     0%, 100% {
       box-shadow: 0 0 5px rgba(255, 255, 255, 0.3), 0 0 10px rgba(255, 255, 255, 0.2), 0 0 15px rgba(255, 255, 255, 0.1);
@@ -63,18 +80,20 @@
       The data-type="module" is important to tell Babel to treat this as an ES module.
     -->
     <script type="text/babel" data-presets="react,typescript" data-type="module" src="./index.tsx"></script>
-    <!--
+    
+    <!-- Service Worker Registration for PWA/Store functionality -->
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-          navigator.serviceWorker.register('./sw.js').then(registration => {
-            console.log('ServiceWorker registrado con éxito:', registration.scope);
-          }).catch(error => {
-            console.log('Fallo en el registro del ServiceWorker:', error);
-          });
+          navigator.serviceWorker.register('./sw.js')
+            .then(registration => {
+              console.log('SW Registered:', registration.scope);
+            })
+            .catch(error => {
+              console.log('SW Registration Failed:', error);
+            });
         });
       }
     </script>
-    -->
   </body>
 </html>
